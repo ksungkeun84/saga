@@ -260,7 +260,8 @@ def spawn_agent(application):
     with open(agent_dir_path+"/agent.json", "w") as f:
         json.dump(application, f, indent=4)
 
-    # TODO: start the agent process? 
+    # TODO: Start the agent process with the given material.
+    # For now, this will be done manually from the dev.
 
 if __name__ == "__main__":
 

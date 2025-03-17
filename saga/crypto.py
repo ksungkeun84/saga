@@ -2,12 +2,20 @@
     SAGA Cryptographic module for key generation.
 """
 
+import base64
 import ipaddress
-from cryptography.hazmat.primitives.asymmetric import ed25519, x25519, padding
+import json
+from cryptography.hazmat.primitives.asymmetric import ed25519, x25519
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
 from cryptography.hazmat.primitives import serialization
 from cryptography.x509.oid import NameOID
 from cryptography import x509
 import datetime
+
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives import hashes
+
 
 def cure(path):
     return path if path[-1]=='/' else path+"/"
@@ -341,3 +349,61 @@ def load_ca(path, orgname):
     private_key, public_key = load_ed25519_keys(path+f"{orgname}")
     cert = load_x509_certificate(path+f"{orgname}.crt")
     return private_key, public_key, cert
+
+
+def encrypt_token(token_dict, sdhkey) -> bytes:
+    """
+    Encrypts a token dictionary using AES-GCM with a Diffie-Hellman shared key.
+
+    :param token_dict: The dictionary containing the token data.
+    :param sdhkey: The shared DH key (must be 32 bytes for AES-256).
+    :return: Base64-encoded encrypted token.
+    """
+    nonce = token_dict['nonce']
+    
+
+    # Convert complex objects to serializable formats
+    serializable_token = {
+        "nonce": base64.b64encode(token_dict['nonce']).decode('utf-8'),
+        "issue_timestamp": token_dict["issue_timestamp"].isoformat(),
+        "expiration_timestamp": token_dict["expiration_timestamp"].isoformat(),
+        "communication_quota": token_dict["communication_quota"],
+        "recipient_identity_key": base64.b64encode(
+            token_dict["recipient_identity_key"].public_bytes(
+                encoding=serialization.Encoding.Raw,
+                format=serialization.PublicFormat.Raw
+            )
+        ).decode('utf-8')
+    }
+
+    # Serialize to JSON and encode to bytes
+    token_json = json.dumps(serializable_token).encode('utf-8')
+
+    # Encrypt using AES-GCM
+    cipher = Cipher(algorithms.AES(sdhkey), modes.GCM(nonce))
+    encryptor = cipher.encryptor()
+    ciphertext = encryptor.update(token_json) + encryptor.finalize()
+
+    # Concatenate nonce + ciphertext + authentication tag
+    encrypted_data = nonce + ciphertext + encryptor.tag
+
+    # Return Base64-encoded encrypted data
+    return encrypted_data
+
+def decrypt_token(encrypted_token, sdhkey):
+
+    # Decode the encrypted token
+    encrypted_data = base64.b64decode(encrypted_token.encode('utf-8'))
+
+    # Extract the nonce, ciphertext, and tag
+    nonce = encrypted_data[:12]
+    ciphertext = encrypted_data[12:-16]
+    tag = encrypted_data[-16:]
+
+    # Decrypt the token
+    cipher = Cipher(algorithms.AES(sdhkey), modes.GCM(nonce, tag))
+    decryptor = cipher.decryptor()
+    token = decryptor.update(ciphertext) + decryptor.finalize()
+
+    return token.decode('utf-8')
+

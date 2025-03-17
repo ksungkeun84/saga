@@ -254,8 +254,45 @@ class Provider:
             t_aid = data.get("t_aid", None)
 
             agent_metadata = self.agents_collection.find_one({"aid" : t_aid})
+            user_metadata = self.users_collection.find_one({"uid" : t_aid.split(":")[0]})
+            if user_metadata is None:
+                return jsonify({"message":"Cannot find agent owner."}), 404
+            # Include the user's identity key in the response
+            user_identity_key = user_metadata.get("identity_key")
+            agent_metadata.update({"user_identity_key": user_identity_key})
+            # Remove the one time pre-keys from the response
+            agent_metadata.pop("one_time_pre_keys", None)
 
             return jsonify(agent_metadata), 200
+    
+        @self.app.route('/access', methods=['POST'])
+        def access():
+            data = request.json
+            t_aid = data.get("t_aid", None)
+
+            user_metadata = self.users_collection.find_one({"uid" : t_aid.split(":")[0]})
+            if user_metadata is None:
+                return jsonify({"message":"Cannot find agent owner."}), 404
+
+            agent_metadata = self.agents_collection.find_one_and_update(
+                {"aid": t_aid, "one_time_pre_keys": {"$ne": []}},  # Ensure keys exist
+                {"$pop": {"one_time_pre_keys": 1}},  # Remove last element
+                return_document=False  # Return document *before* modification
+            )
+
+            # If agent not found or no keys left, return 404
+            if agent_metadata is None:
+                return jsonify({"message": "Agent not found or no keys left."}), 404
+
+            # Include the user's identity key in the response
+            user_identity_key = user_metadata.get("identity_key")
+            agent_metadata.update({"user_identity_key": user_identity_key})
+            # Remove the one time pre-keys from the response
+            agent_metadata['one_time_pre_keys'] = [agent_metadata['one_time_pre_keys'][0]]
+
+            return jsonify(agent_metadata), 200
+    
+    
     def run(self):
         """Runs the web server."""
         self.app.run(host=self.host, port=self.port, ssl_context=self.ssl_context)
