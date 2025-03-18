@@ -11,10 +11,11 @@ from datetime import datetime, timedelta, timezone
 import traceback
 import saga.config
 from pathlib import Path
+import random
 
 DEBUG = False
 MAX_BUFFER_SIZE = 4096
-
+MAX_QUERIES = 5
 """"
 
 Agent class for the SAGA system.
@@ -40,11 +41,36 @@ def get_agent_material(dir_path: Path):
 
 
 class DummyAgent:
+    """
+    Dummy agent for networkig testing purposes. Simulates a dumb agent that thinks and returns a ranom response.
+    """
+    vocab = [
+        "Hi",
+        "Hello"
+        "Yeah this makes sense.",
+        "I think I understand.",
+        "I love apples",
+        "I don't know.",
+        "I'm not sure.",
+        "I'm sorry, I don't understand.",
+        "I'm sorry, I can't do that.",
+        "Do you think that we have purpose?",
+        "What is the meaning of life?",
+        "Do you think we are alone in the universe?",
+        "I think we are alone in the universe.",
+        "I think we are not alone in the universe.",
+        'Faxxx',
+        "<TASK_FINISHED>"
+    ]
+
     def __init__(self):
         self.task_finished_token = "<TASK_FINISHED>"
 
-    def run(self):
-        return "I love apples"
+    def run(self, query):
+        time.sleep(1)
+        if query == self.task_finished_token:
+            return self.task_finished_token
+        return random.choice(DummyAgent.vocab)
 
 
 class Agent:
@@ -204,10 +230,14 @@ class Agent:
 
         return True
 
-    def initiate_conversation(self, conn, token, init_msg: str):
-        MAX_YAP = 5
+    def initiate_conversation(self, conn, token, init_msg: str) -> bool:
+        """
+        Returns true if the conversation ended from the initiating side.
+        """
+
         text = init_msg
-        while MAX_YAP > 0:
+        i = 0
+        while i < MAX_QUERIES:
             # Prepare message: 
             msg = {
                 "msg": text,
@@ -216,35 +246,48 @@ class Agent:
             # Send message:
             conn.sendall(json.dumps(msg).encode('utf-8'))
             print(f"Sent: {msg['msg']}")
+            if msg['msg'] == self.task_finished_token:
+                print("Task deemed complete from initiating side.")
+                return True
             # Receive response:
             response = conn.recv(MAX_BUFFER_SIZE) # TODO: vary buffer size depending on how long the LLM answers are going to be
+            if not response:
+                print("Received b'' indicating that the connection might have been closed from the other side. Returning...")
+                return False
+            elif response == self.task_finished_token:
+                print("Task deemed complete from receiving side.")
+                return False
             response = json.loads(response.decode('utf-8'))
             # Process response:
             print(f"Received: {response['msg']}")
             text = self.local_agent.run(str(response.get("msg", None))) # TODO: Handle None (missing) msg gracefully
 
-            if text == self.task_finished_token:
-                print("Task finished.")
-                break
+            
+            i += 1
+        print("WARNING: Maximum allowed number of queries in the conversation is reached. Ending conversation...")
+        return True
 
-            # text = None if len(convo) == 0 else convo.pop() # Model conversation    
-            MAX_YAP -= 1
-
-    def receive_conversation(self, conn, token):
-        while True: 
+    def receive_conversation(self, conn, token) -> bool:
+        """
+        Returns true if the conversation ended from the receiving side.
+        """
+        i = 0
+        while i < MAX_QUERIES: 
             
             # Receive message:
-            message = conn.recv(MAX_BUFFER_SIZE) # TODO: vary buffer size depending on how long the LLM answers are going to be
-            if message != b'':
-                message = json.loads(message.decode('utf-8'))
-            else:
-                break
+            message = conn.recv(MAX_BUFFER_SIZE)
+            if not message:
+                print("Received b'' indicating that the connection might have been closed from the other side. Returning...")
+                return False
+            
+            message = json.loads(message.decode('utf-8'))
             
             # Extract token from the message:
             token = message.get("token", None)
             # Check if the token of the message is valid
             if not self.token_is_valid(token):
-                break
+                print("Invalid token.")
+                return True
             # Reduce the remaining quota for the token:
             self.active_tokens[token]["communication_quota"] = max(0, self.active_tokens[token]["communication_quota"] - 1)
             
@@ -252,13 +295,13 @@ class Agent:
             print(f"Received: {message['msg']}")
 
             if message['msg'] == self.task_finished_token:
-                print("Task finished.")
-                break
+                print("Task deemed complete from initiating side.")
+                return False
 
             response = self.local_agent.run(str(message.get("msg", None))) # TODO: Handle None (missing) msg gracefully
             if response == self.task_finished_token:
-                print("Task finished.")
-                break
+                print("Task deemed complete from receiving side.")
+                return True
 
             # Prepare response:
             response_dict = {
@@ -268,6 +311,11 @@ class Agent:
             # Send response:
             conn.sendall(json.dumps(response_dict).encode('utf-8'))
             print(f"Sent: {response_dict['msg']}")
+
+            i += 1
+
+        print("WARNING: Maximum allowed number of queries in the conversation is reached. Ending conversation...")
+        return True
 
     def connect(self, r_aid, message: str):
 
@@ -425,6 +473,7 @@ class Agent:
                         
                         # Start the conversation:
                         self.initiate_conversation(conn, enc_token_str, message)
+                        print("Conversation ended.")
 
         except ssl.SSLError as e:
             print(f"SSL Error: {e}")
@@ -434,9 +483,10 @@ class Agent:
 
         finally:
             try:
+                print("Attempting to close connection.")
                 conn.shutdown(socket.SHUT_RDWR)
                 conn.close()
-                print(f"Conversation ended.")
+                print("Connection closed.")
             except:
                 print("Connection already closed by other party.")
 
