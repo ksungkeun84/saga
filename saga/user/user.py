@@ -52,6 +52,8 @@ def register():
             'private': private_key
         }
         # Save the keys to disk:
+        if not os.path.exists(saga.config.USER_WORKDIR+"/keys"):
+            os.mkdir(saga.config.USER_WORKDIR+"/keys")
         sc.save_ed25519_keys(saga.config.USER_WORKDIR+"/keys/"+email, private_key, public_key)
 
 

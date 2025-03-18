@@ -82,6 +82,12 @@ class Provider:
 
         @self.app.route('/register', methods=['POST'])
         def register():
+            """
+            This endpoint is used by the user to register with the provider. The user must
+            provide their desired UID (public) and password (private). The user must also 
+            provide their public identity key for signing. 
+            """
+            # Retrieve the user's uid and password from the request body.
             data = request.json
             uid = data.get("uid")
             password = data.get("password")
@@ -89,6 +95,7 @@ class Provider:
             if self.users_collection.find_one({"uid": uid}):
                 return jsonify({"message": "User already exists"}), 400
 
+            # Store password hash and identity key in the database.
             hashed_pw = self.bcrypt.generate_password_hash(password).decode("utf-8")
             identity_key = data.get("identity_key")
             identity_key_bytes = base64.b64decode(identity_key)
@@ -104,10 +111,19 @@ class Provider:
 
         @self.app.route('/login', methods=['POST'])
         def login():
+            """
+            This endpoint is used by the user to login. The user must provide their UID
+            and password in the request body. If the credentials are valid, the user will
+            receive an access token that can be used to authenticate future requests.
+
+            The access token is valid for 24 hours.
+            """
+            # Retrieve the user's uid and password from the request body.
             data = request.json
             uid = data.get("uid")
             password = data.get("password")
 
+            # Check if the user exists and the password is correct.
             user = self.users_collection.find_one({"uid": uid})
             if user and self.bcrypt.check_password_hash(user["password"], password):
                 access_token = create_access_token(identity=user["uid"])
@@ -139,6 +155,20 @@ class Provider:
 
         @self.app.route('/register_agent', methods=['POST'])
         def register_agent():
+            """
+            This endpoint is used by the user to register a new agent. The user must provide
+            the agent's cryptographic material, including the agent's identity key, public
+            signing key, signed pre-key, and one-time pre-keys. The user must also provide
+            the agent's device information, including the device name, IP address, and port.
+
+            The user must also provide the agent's certificate, signed by a CA. The user must
+            also provide the signatures of the agent's device information, public signing key,
+            and signed pre-key, signed by the user's identity key.
+
+            The user MUST be authenticated to register an agent. The user must provide their
+            UID and a valid JWT in the request body.
+            """
+            # Retrieve the user's uid and JWT from the request body.
             data = request.json
             uid = data.get("uid")
             user_jwt = data.get("jwt")
@@ -147,20 +177,30 @@ class Provider:
             user = self.users_collection.find_one({"uid": uid})
             if not user:
                 return jsonify({"message": "User not found"}), 404
-
+            
+            # Make sure that the user has been recently authenticated
             usr_record = self.users_collection.find_one({"uid": uid, "auth_tokens.token": user_jwt})
             if not usr_record:
                 return jsonify({"message": "User not authenticated"}), 401
-
+            
+            # Check that the authentication token is valid and not expired
             now = datetime.now(timezone.utc)
             exp = usr_record["auth_tokens"][0]["exp"].replace(tzinfo=timezone.utc)
             if now > exp:
                 return jsonify({"message": "Token expired."}), 401
 
+            # ========================================================================
+            # Start the agent registration processing. At this point, the provider 
+            # collects all the relevant cryptographic material and verifies the
+            # signatures provided by the user. 
+            # ========================================================================
+
+            # Extract the agent's given aid.
             application = data.get("application")
             aid = application.get("aid")
             if not aid:
                 return jsonify({"message": "Agent aid not provided"}), 400
+            # Reject if aid is already being used by another agent.
             if self.agents_collection.find_one({"aid": aid}):
                 return jsonify({"message": f'Agent "{aid}" already exists.'}), 401
 
@@ -169,6 +209,12 @@ class Provider:
             ip = application.get("IP")
             port = application.get("port")
 
+            # First, verify the device information block signature.
+            # The device information block includes 
+            # - the aid, 
+            # - device name, 
+            # - IP address, port, and 
+            # - the provider's public identity key (PIK). 
             dev_info = {
                 "aid": aid, 
                 "device": device, 
@@ -179,7 +225,8 @@ class Provider:
                     format=sc.serialization.PublicFormat.Raw)
             }
             dev_info_sig_bytes = base64.b64decode(application.get("dev_info_sig"))
-
+            # The device information block was signed by the user. We need the identity
+            # key of the user to verify the signature.
             user_identity_key = sc.bytesToPublicEd25519Key(user["identity_key"])
 
             try:
@@ -190,12 +237,20 @@ class Provider:
             except:
                 return jsonify({"message": "Invalid device info signature"}), 401
 
+            # Next, we need to berify the agent identity block. This block includes
+            # - the agent's aid,
+            # - the agent's public signing key, and
+            # - the provider's public identity key (PIK).
+            # i.e. we need to confirm that the public key of the certificate was 
+            # signed by the user. (Note: this is not self-signing. Keep in mind that
+            # the user is a different entity than the agent.)
+        
             
             # Get the agent certificate:
             agent_cert_bytes = base64.b64decode(application.get("agent_cert"))
             agent_cert = sc.bytesToX509Certificate(agent_cert_bytes)
 
-
+            # Extract the public signing key and its signature
             public_signing_key_bytes = agent_cert.public_key().public_bytes(
                 encoding=sc.serialization.Encoding.Raw,
                 format=sc.serialization.PublicFormat.Raw
@@ -210,6 +265,7 @@ class Provider:
                     format=sc.serialization.PublicFormat.Raw)
             }
 
+            # Use the user's identity key for the verification of tha agent's identity.
             try:
                 user_identity_key.verify(
                     public_signing_key_sig_bytes,
@@ -218,19 +274,39 @@ class Provider:
             except:
                 return jsonify({"message": "Invalid agent identity signature"}), 401
 
+            # Finally, verify the agent's signed pre-key signature. The signed pre-key
+            # is signed by the user and will be used for access control token generation.
             agent_identity_key_bytes = base64.b64decode(application.get("identity_key"))
 
             spk_bytes = base64.b64decode(application.get("spk"))
             spk_sig_bytes = base64.b64decode(application.get("spk_sig"))
 
+            # Verify the signed pre-key signature using the user's identity key.
             try:
                 user_identity_key.verify(spk_sig_bytes, spk_bytes)
             except:
                 return jsonify({"message": "Invalid signed pre-key signature"}), 401
 
+            # Extract the one-time pre-keys. No signatures are provided for these keys.
             opks = application.get("opks")
             opks_bytes = [base64.b64decode(opk) for opk in opks]
 
+            
+            # Check if any of the keys are being reused:
+            if self.agents_collection.find_one({"agent_cert": agent_cert_bytes}):
+                return jsonify({"message": "Agent certificate already in use"}), 401
+            if self.agents_collection.find_one({"identity_key": agent_identity_key_bytes}):
+                return jsonify({"message": "Identity key already in use"}), 401
+            if self.agents_collection.find_one({"signed_pre_key": spk_bytes}):
+                return jsonify({"message": "Signed pre-key already in use"}), 401
+            for opk in opks_bytes:
+                if self.agents_collection.find_one({"one_time_pre_keys": {"$elemMatch": {"$eq": opk}}}):
+                    return jsonify({"message": "One-time pre-key already in use"}), 401
+
+            # ========================================================================
+            # At this stage, all required checks have been completed. The provider 
+            # can now store the agent's cryptographic material in the database. 
+            # ========================================================================
             self.agents_collection.insert_one({
                 "aid": aid,
                 "device": device,
@@ -244,12 +320,20 @@ class Provider:
                 "signed_pre_key_sig": spk_sig_bytes,
                 "one_time_pre_keys": opks_bytes
             })
-
+            # Pop the JWT from the user's record so that it cannot be reused for other purposes.
             self.users_collection.update_one({"uid": uid}, {"$pull": {"auth_tokens": {"token": user_jwt}}})
             return jsonify({"message": "Agent registered successfully"}), 201
 
         @self.app.route('/lookup', methods=['POST'])
         def lookup():
+            """"
+            This endpoint is used by any agent to look up the public cryptographic material 
+            of another agent. In most use cases, the receiving agent uses the lookup endpoint
+            to retrieve the public cryptographic material of the initiating agent. 
+
+            No one-time pre-keys are returned in the response. Only the public cryptographic
+            material of the agent.
+            """
             data = request.json
             t_aid = data.get("t_aid", None)
 
@@ -267,6 +351,16 @@ class Provider:
     
         @self.app.route('/access', methods=['POST'])
         def access():
+            """
+            This endpoint is used by the initiating agent to request a one-time pre-key
+            from the provider in order to receive an access control token from the
+            receiving agent.
+
+            The request should include the target agent ID (t_aid) in the request body.
+
+            The response will include the one-time pre-key and the user's identity key
+            along with all other relevant cryptographic material of the receiving agent.
+            """
             data = request.json
             t_aid = data.get("t_aid", None)
 
