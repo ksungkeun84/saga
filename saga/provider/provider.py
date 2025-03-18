@@ -394,11 +394,16 @@ class Provider:
 
 # Run the provider
 if __name__ == "__main__":
+    # Read the provider URI from config.py
+    provider_uri = saga.config.PROVIDER_URL
+    # Read the port from this
+    port = int(provider_uri.split(":")[-1])
+
     provider = Provider(
         workdir="./",
         name="provider",
         host="0.0.0.0",
-        port=5000,
+        port=port,
         mongo_uri="mongodb://localhost:27017/saga",
         jwt_secret="supersecretkey"
     )

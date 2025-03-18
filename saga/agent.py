@@ -10,8 +10,10 @@ import requests
 from datetime import datetime, timedelta, timezone
 import traceback
 import saga.config
+from pathlib import Path
 
 DEBUG = False
+MAX_BUFFER_SIZE = 4096
 
 """"
 
@@ -20,41 +22,46 @@ Agent class for the SAGA system.
 """
 import saga.crypto as sc
 
-class LocalAent:
-    
-    def __init__(self, agent):
-        self.agent = agent
 
-    def query(self, query):
-        pass
+def get_agent_material(dir_path: Path):
+    # Check if dir exists:
+    if not os.path.exists(dir_path):
+        os.mkdir(dir_path)
+
+    # Open agent.json
+    if dir_path[-1] != '/':
+        dir_path += "/"
+
+    material = None
+    with open(dir_path+"agent.json", "r") as f:
+        material = json.load(f)
+    
+    return material
+
+
+class DummyAgent:
+    def __init__(self):
+        self.task_finished_token = "<TASK_FINISHED>"
+
+    def run(self):
+        return "I love apples"
+
 
 class Agent:
-
-    def fromDir(agent_dir_path):
-
-        # Check if dir exists:
-        if not os.path.exists(agent_dir_path):
-            os.mkdir(agent_dir_path)
-
-        # Open agent.json
-        if agent_dir_path[-1] != '/':
-            agent_dir_path += "/"
-
-        material = None
-        with open(agent_dir_path+"agent.json", "r") as f:
-            material = json.load(f)
-    
-        return Agent(agent_dir_path, material)
-
-
-    def __init__(self, workdir, material):
+    def __init__(self, workdir, material, local_agent = None):
 
         self.workdir = workdir
         if self.workdir[-1] != '/':
             self.workdir += '/'
 
-        self.agent = None # library-agnostic agent object
-        
+        # library-agnostic agent object
+        self.local_agent = local_agent
+        if local_agent is None:
+            print("WARNING: No local agent provided. Using dummy agent.")
+            self.local_agent = DummyAgent()
+
+        self.task_finished_token = self.local_agent.task_finished_token
+
         self.aid = material.get("aid")
         self.device = material.get("device")
         self.IP = material.get("IP")
@@ -197,11 +204,10 @@ class Agent:
 
         return True
 
-    def initiate_conversation(self, conn, token, init_msg):
-        convo = list(reversed(["Hey there!", "Sup?", "I'm good'", "Bye bye"]))
-        # text = init_msg
-        text = convo.pop()
-        while text is not None: # TODO: Implement this function
+    def initiate_conversation(self, conn, token, init_msg: str):
+        MAX_YAP = 5
+        text = init_msg
+        while MAX_YAP > 0:
             # Prepare message: 
             msg = {
                 "msg": text,
@@ -211,22 +217,24 @@ class Agent:
             conn.sendall(json.dumps(msg).encode('utf-8'))
             print(f"Sent: {msg['msg']}")
             # Receive response:
-            response = conn.recv(1024) # TODO: vary buffer size depending on how long the LLM answers are going to be
+            response = conn.recv(MAX_BUFFER_SIZE) # TODO: vary buffer size depending on how long the LLM answers are going to be
             response = json.loads(response.decode('utf-8'))
             # Process response:
             print(f"Received: {response['msg']}")
-            # text = self.agent.query(response.get("msg", None)) # TODO: CONNECT TO THE AGENT LIBRARY 
-            
-            time.sleep(1) # Sleep for a second
+            text = self.local_agent.run(str(response.get("msg", None))) # TODO: Handle None (missing) msg gracefully
 
-            text = None if len(convo) == 0 else convo.pop() # Model conversation    
+            if text == self.task_finished_token:
+                print("Task finished.")
+                break
+
+            # text = None if len(convo) == 0 else convo.pop() # Model conversation    
+            MAX_YAP -= 1
 
     def receive_conversation(self, conn, token):
-        convo = list(reversed(["Hello!!", "I am fine, you?", "Noice!", "Goodbye"]))
         while True: 
             
             # Receive message:
-            message = conn.recv(1024) # TODO: vary buffer size depending on how long the LLM answers are going to be
+            message = conn.recv(MAX_BUFFER_SIZE) # TODO: vary buffer size depending on how long the LLM answers are going to be
             if message != b'':
                 message = json.loads(message.decode('utf-8'))
             else:
@@ -239,13 +247,18 @@ class Agent:
                 break
             # Reduce the remaining quota for the token:
             self.active_tokens[token]["communication_quota"] = max(0, self.active_tokens[token]["communication_quota"] - 1)
-
             
             # Process message:
             print(f"Received: {message['msg']}")
-            #response = self.agent.query(message.get("msg", None)) # TODO: CONNECT TO THE AGENT LIBRARY
-            time.sleep(1) # Sleep for a second
-            response = convo.pop() # Model conversation
+
+            if message['msg'] == self.task_finished_token:
+                print("Task finished.")
+                break
+
+            response = self.local_agent.run(str(message.get("msg", None))) # TODO: Handle None (missing) msg gracefully
+            if response == self.task_finished_token:
+                print("Task finished.")
+                break
 
             # Prepare response:
             response_dict = {
@@ -256,7 +269,7 @@ class Agent:
             conn.sendall(json.dumps(response_dict).encode('utf-8'))
             print(f"Sent: {response_dict['msg']}")
 
-    def connect(self, r_aid):
+    def connect(self, r_aid, message: str):
 
         # Get everything you need to reach the receiving agent from the provider:
         r_agent_material = self.access(r_aid)
@@ -373,7 +386,7 @@ class Agent:
                     conn.sendall(request_json)
 
                     # Receive response
-                    response = conn.recv(1024)
+                    response = conn.recv(MAX_BUFFER_SIZE)
                     if response:
                         accept_response = json.loads(response.decode('utf-8'))
                         # Diffie hellman calculations:
@@ -411,7 +424,7 @@ class Agent:
                         # token_dict = self.decrypt_token(token, SDHK)
                         
                         # Start the conversation:
-                        self.initiate_conversation(conn, enc_token_str, "hi")
+                        self.initiate_conversation(conn, enc_token_str, message)
 
         except ssl.SSLError as e:
             print(f"SSL Error: {e}")
@@ -435,7 +448,7 @@ class Agent:
             print(f"Connection from {fromaddr}")
 
             # Receive data
-            data = conn.recv(1024)
+            data = conn.recv(MAX_BUFFER_SIZE)
             if data:
                     try:
 
@@ -617,6 +630,7 @@ class Agent:
                 print(f"Conversation ended.")
             except:
                 print("Connection already closed by other party.")
+
     def listen(self):
         """
         Listens for incoming TLS connections, handles Ctrl+C gracefully,

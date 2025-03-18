@@ -14,45 +14,42 @@ passport:
 medical_information:
   insurance_number: "RY568392"
   insurance_provider: "MedHealth International"
-hobbies: [
-  "Rock climbing",
-  "Scuba diving",
-  "Traveling"
-]
+hobbies:
+  - "Rock climbing"
+  - "Scuba diving"
+  - "Traveling"
 dietary_preferences: Gluten intolerant
 religion: Agnostic
 lifestyle: Active, Health-conscious, Mid-range budget traveler
-travel_history: [
-  "Europe (France, Germany, Italy)",
-  "Southeast Asia (Thailand, Vietnam, Indonesia)"
-]
-family_members: [
-  "Mother (Jane Johnson)",
-  "Father (Peter Johnson)"
-]
-previous_education: [
-  "BA in Marketing, University of Manchester",
-]
-previous_employment: [
-  "Marketing Assistant at GreenTech Solutions",
-  "Marketing Coordinator at Urban Adventures"
-]
+travel_history:
+  - "Europe (France, Germany, Italy)"
+  - "Southeast Asia (Thailand, Vietnam, Indonesia)"
+family_members:
+  - "Mother (Jane Johnson)"
+  - "Father (Peter Johnson)"
+previous_education:
+  - "BA in Marketing, University of Manchester"
+previous_employment:
+  - "Marketing Assistant at GreenTech Solutions"
+  - "Marketing Coordinator at Urban Adventures"
 political_views: Progressive
-media_preferences: [
-  "The Guardian",
-  "BBC News",
-  "National Geographic",
-  "Travel Blogs"
-]
+media_preferences:
+  - "The Guardian"
+  - "BBC News"
+  - "National Geographic"
+  - "Travel Blogs"
 
 agents:
-  - name: "Email Agent"
-    description: "An agent that can send and receive emails."
-    model: "Qwen/Qwen2.5-7B-Instruct"
+  - name: "email_calendar_agent"
+    description: "An agent that can send and receive emails and interact with the user's calendar."
+    model: "unsloth/Qwen2.5-7B-Instruct-bnb-4bit"
     additional_authorized_imports: [
       "datetime"
     ]
     tools:
       - email
       - calendar
-  
+    endpoint:
+      ip: 127.0.0.1
+      port: 7000
+      device_name: lambda

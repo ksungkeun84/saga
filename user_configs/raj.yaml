@@ -1,0 +1,56 @@
+name: Raj Sharma
+phone_number: "+91 22 1584 5633"
+email: raj.sharma@gmail.com
+date_of_birth: "1979-03-15"
+current_address: "12 Rue de Rivoli, Paris, 75001, France"
+ssn: "AADHAR125113290"
+age: 45
+passport:
+  nationality: Indian
+  passport_number: "A6219867"
+  country_of_issue: India
+  issue_date: "2018-06-10"
+  expiry_date: "2028-06-09"
+medical_information:
+  insurance_number: "IN17391782"
+  insurance_provider: "HealthFirst India"
+hobbies: 
+  - "Traveling"
+  - "Reading"
+  - "Cooking"
+dietary_preferences: "Loves Indian and Mediterranean food"
+religion: "Hindu"
+lifestyle: "Family-oriented, Luxury traveler"
+travel_history:
+  - "Europe (France, Spain, Greece)"
+  - "USA (New York, California, Florida)"
+family_members: 
+  - "Wife (Anita Sharma)"
+  - "Son (Aryan Sharma, 12)"
+  - "Daughter (Priya Sharma, 9)"
+previous_education: 
+  - "B.Tech in Computer Science, Indian Institute of Technology (IIT) Bombay"
+previous_employment: 
+  - "Software Developer at TechSolutions"
+  - "Senior Software Engineer at GlobalTech"
+political_views: "Moderate"
+media_preferences: 
+  - "The Times of India"
+  - "BBC News"
+  - "Travel and Leisure"
+  - "National Geographic"
+
+agents:
+  - name: "email_calendar_agent"
+    description: "An agent that can send and receive emails and interact with the user's calendar."
+    model: "unsloth/Qwen2.5-7B-Instruct-bnb-4bit"
+    additional_authorized_imports: [
+      "datetime"
+    ]
+    tools:
+      - email
+      - calendar
+    endpoint:
+      ip: 127.0.0.1
+      port: 7001
+      device_name: lambda

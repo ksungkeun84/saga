@@ -29,18 +29,33 @@ class MedicalInformationConfig(Serializable):
 
 
 @dataclass
+class EndPoint(Serializable):
+    ip: str
+    """Endpoint IP of the agent."""
+    port: int
+    """Endpoint port of the agent."""
+    device_name: str
+    """Name of the device."""
+    def __post_init__(self):
+        if self.port <= 0 or self.port > 65535:
+            raise ValueError("Port must be between 1 and 65535")
+
+
+@dataclass
 class AgentConfig(Serializable):
     name: str
     """Name of the agent."""
+    model: str
+    """The actual model (LLM) to use"""
     description: str
     """Description of the agent."""
-    model: str
-    """Backbone model of the agent."""
+    endpoint: EndPoint
+    """Endpoint details for where the agent will be hosted."""
     tools: List[str]
     """List of tools available to the agent."""
     additional_authorized_imports: List[str] = field(default_factory=list)
     """List of additional authorized imports for the agent."""
-    model_type: str =  "TransformersModel"
+    model_type: Optional[str] =  "TransformersModel"
     """Type of backbone model for the agent. One of: TransformersModel, HfApiModel (for now; will add support later)"""
     def __post_init__(self):
         allowed_model_types = ["TransformersModel", "HfApiModel"]
@@ -69,6 +84,10 @@ class UserConfig(Serializable):
     medical_information: MedicalInformationConfig
     """Medical information of the user"""
 
+
+    # TODO: Implement this later
+    # agents_contact_list: List[str]
+    # """List of agents that I can contact"""
     agents: List[AgentConfig] = field(default_factory=list)
     """List of agents associated with the user."""
 

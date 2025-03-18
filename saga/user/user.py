@@ -269,7 +269,7 @@ if __name__ == "__main__":
 
     while True:
         print("======= SAGA User Client CLI =======")
-        print("1. Register\n2. Login\n3. Google OAuth Login\n4. Register Agent")
+        print("1. Register\n2. Login\n3. Google OAuth Login\n4. Register Agent\n5. Exit")
         choice = input("Choose an option: ")
 
         if choice == '1':
@@ -280,3 +280,6 @@ if __name__ == "__main__":
             oauth_login()
         elif choice == '4':
             register_agent()
+        elif choice == '5':
+            print("Exiting...")
+            exit(0)

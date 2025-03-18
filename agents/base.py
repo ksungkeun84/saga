@@ -2,14 +2,16 @@ from smolagents import CodeAgent, HfApiModel, TransformersModel
 from agents.config import AgentConfig, UserConfig
 from typing import List
 from smolagents import tool
-import inspect
-from transformers import pipeline
+from smolagents.prompts import CODE_SYSTEM_PROMPT
 
 from tools.email import LocalEmailClientTool
-from tools.calendar import LocalCalendarClientTool
+from tools.calendar import LocalCalendarTool
 
 
 class AgentWrapper:
+    """
+        Base agents wrapper, built on top of CodeAgent form smolagents
+    """
     def __init__(self, user_config: UserConfig, config: AgentConfig):
         # TODO: should not provide all of user-config (airgap ftw) - think about this later
         self.user_config = user_config
@@ -22,7 +24,11 @@ class AgentWrapper:
         # Initialize base model
         model = self._initialize_base_model()
 
+        self.task_finished_token = "<TASK_FINISHED>"
+
         # TODO: Figure out where to use description
+        TASK_FINISH_INSTR = f"\n\nWhen you determine that the task is fully completed, respond with: {self.task_finished_token}. Do not append unnecessary details before or after {self.task_finished_token}."
+        PROMPT_TO_USE = CODE_SYSTEM_PROMPT + TASK_FINISH_INSTR
 
         # Initialize agent
         self.agent = CodeAgent(
@@ -30,7 +36,8 @@ class AgentWrapper:
             model = model,
             add_base_tools = True,
             additional_authorized_imports=self.config.additional_authorized_imports,
-            verbosity_level=2
+            verbosity_level=2,
+            system_prompt=PROMPT_TO_USE
         )
     
     def _initialize_base_model(self):
@@ -51,6 +58,10 @@ class AgentWrapper:
         return model
 
     def _collect_tools_for_use(self):
+        """
+            Generic function that tries to read all local-functions within class with a certain name.
+            Any child class can thus extend and add their own tools.
+        """
         # Read all tools referenced in self.config.tools and get corresponding functions
         for tool_name in self.config.tools:
             tool_func = getattr(self, f"_{tool_name}_tools", None)
@@ -109,7 +120,7 @@ class AgentWrapper:
 
     def _calendar_tools(self):
         # Define relevant tools for email use
-        self.calendar_client = LocalCalendarClientTool(self.user_config.email)
+        self.calendar_client = LocalCalendarTool(self.user_config.email)
 
         @tool
         def get_upcoming_events(limit: int = 10) -> List[dict]:
@@ -150,7 +161,7 @@ class AgentWrapper:
         ]
         return tools_available
 
-    def query(self, query: str) -> str:
+    def run(self, query: str, **kwargs) -> str:
         # TODO: Think of conversation history later
-        response = self.agent.run(query)
+        response = self.agent.run(str(query), **kwargs)
         return response

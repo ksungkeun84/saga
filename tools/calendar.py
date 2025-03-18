@@ -5,7 +5,7 @@ from typing import List
 from tools.base import BaseTool
 
 
-class LocalCalendarClientTool(BaseTool):
+class LocalCalendarTool(BaseTool):
     def __init__(self, user_email: str):
         super().__init__("calendar")
         self.client = MongoClient(self.mongo_uri)
