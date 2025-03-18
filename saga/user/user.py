@@ -268,6 +268,7 @@ def spawn_agent(application):
 if __name__ == "__main__":
 
     while True:
+        print("======= SAGA User Client CLI =======")
         print("1. Register\n2. Login\n3. Google OAuth Login\n4. Register Agent")
         choice = input("Choose an option: ")
 
