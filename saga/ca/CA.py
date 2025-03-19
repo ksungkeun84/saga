@@ -38,6 +38,10 @@ class CA:
             url = f"{endpoint}/{self.orgname}.{file}"
             save_path = os.path.join(self.workdir, f"{self.orgname}.{file}")
             download_file(url, save_path)
+        
+        # Load the keys and certificate of the CA, since they exist:
+        self.private_key, self.public_key, self.cert = sc.load_ca(self.workdir, self.orgname)
+
 
     def _old_init(self, workdir, config):
 
