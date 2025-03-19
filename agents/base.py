@@ -1,8 +1,10 @@
-from smolagents import CodeAgent, HfApiModel, TransformersModel
+from smolagents import CodeAgent, HfApiModel, TransformersModel, OpenAIServerModel, PromptTemplates, MultiStepAgent
 from agents.config import AgentConfig, UserConfig
+import importlib.resources
+import yaml
 from typing import List
+from typing import Tuple
 from smolagents import tool
-from smolagents.prompts import CODE_SYSTEM_PROMPT
 
 from tools.email import LocalEmailClientTool
 from tools.calendar import LocalCalendarTool
@@ -22,23 +24,19 @@ class AgentWrapper:
         self._collect_tools_for_use()
 
         # Initialize base model
-        model = self._initialize_base_model()
+        self._initialize_base_model()
 
         self.task_finished_token = "<TASK_FINISHED>"
 
         # TODO: Figure out where to use description
         TASK_FINISH_INSTR = f"\n\nWhen you determine that the task is fully completed, respond with: {self.task_finished_token}. Do not append unnecessary details before or after {self.task_finished_token}."
-        PROMPT_TO_USE = CODE_SYSTEM_PROMPT + TASK_FINISH_INSTR
-
-        # Initialize agent
-        self.agent = CodeAgent(
-            tools = self.tool_collections,
-            model = model,
-            add_base_tools = True,
-            additional_authorized_imports=self.config.additional_authorized_imports,
-            verbosity_level=2,
-            system_prompt=PROMPT_TO_USE
+        PROMPT_TO_USE: PromptTemplates = yaml.safe_load(
+            importlib.resources.files("smolagents.prompts").joinpath("code_agent.yaml").read_text()
         )
+        PROMPT_TO_USE.system_prompt += TASK_FINISH_INSTR
+
+        # Store details needed to create a new agent instance
+        self.prompt_for_agent = PROMPT_TO_USE   
     
     def _initialize_base_model(self):
         if self.config.model_type == "TransformersModel":
@@ -53,9 +51,17 @@ class AgentWrapper:
                 hf_api_key="",
                 hf_api_url="https://api-inference.huggingface.co/models/"
             )
+        elif self.config.model_type == "OpenAIServerModel":
+            model = OpenAIServerModel(
+                model_id=self.config.model,
+                api_base=self.config.api_base,
+                api_key=self.config.api_key
+            )
         else:
             raise ValueError(f"Model type {self.config.model_type} not supported.")
-        return model
+        
+        # Set this model
+        self.model = model
 
     def _collect_tools_for_use(self):
         """
@@ -161,7 +167,32 @@ class AgentWrapper:
         ]
         return tools_available
 
-    def run(self, query: str, **kwargs) -> str:
-        # TODO: Think of conversation history later
-        response = self.agent.run(str(query), **kwargs)
-        return response
+    def _initialize_agent(self) -> MultiStepAgent:
+        agent = CodeAgent(
+            tools = self.tool_collections,
+            model = self.model,
+            add_base_tools = True,
+            additional_authorized_imports=self.config.additional_authorized_imports,
+            verbosity_level=2,
+            system_prompt=self.prompt_for_agent
+        )
+        return agent
+
+    def run(self, query: str,
+            agent_instance: MultiStepAgent = None,
+            **kwargs) -> Tuple[MultiStepAgent, str]:
+        # We create a new instance for every fresh task, as every agent object shared memory 
+        # and we only want to share them for a given conversation, not all conversations of an agent.
+        # Also helps in isolation, as the objects are now separate.
+        # Overhead for new agent creation is low enough that it is not a problem.
+
+        if agent_instance is None:
+            agent_instance = self._initialize_agent()
+
+        # Make sure kwargs do not specify reset (should be False)
+        if "reset" in kwargs:
+            print ("WARNING: 'reset'' should not be specified in kwargs to agent, as it is always False.")
+            kwargs.pop("reset")
+
+        response = agent_instance.run(str(query), reset=False, **kwargs)
+        return agent_instance, response

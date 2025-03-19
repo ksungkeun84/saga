@@ -3,6 +3,9 @@
 ROOT_DIR = "/home/georgios/saga/saga"
 
 ### CA ###
+# Endpoint where CA hosts relevant files
+CA_ENDPOINT = "http://129.10.186.246:8000"
+
 CA_WORKDIR = ROOT_DIR+"/ca"
 CA_CONFIG = {
     "COUNTRY_NAME": "US",

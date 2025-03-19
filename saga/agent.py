@@ -311,6 +311,7 @@ class Agent:
         """
         Returns true if the conversation ended from the initiating side.
         """
+        agent_instance = None
 
         text = init_msg
         i = 0
@@ -353,6 +354,7 @@ class Agent:
         """
         Returns true if the conversation ended from the receiving side.
         """
+        agent_instance = None
         i = 0
         while self.token_is_valid(token) and i < MAX_QUERIES: 
             
@@ -380,7 +382,11 @@ class Agent:
                 logger.log("AGENT", "Task deemed complete from initiating side.")
                 return False
 
-            response = self.local_agent.run(str(message.get("msg", None))) # TODO: Handle None (missing) msg gracefully
+            received_message = str(message.get("msg", None))
+            # TODO: Handle None (missing) msg gracefully
+            agent_instance, response = self.local_agent.run(query=received_message,
+                                                            agent_instance=agent_instance)
+
             if response == self.task_finished_token:
                 logger.log("AGENT", "Task deemed complete from receiving side.")
                 return True
