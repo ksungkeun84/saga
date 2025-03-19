@@ -92,6 +92,12 @@ class Provider:
         def index():
             return "<h1>Hello, World!</h1>"
 
+        @self.app.route('/certificate', methods=['GET'])
+        def certificate():
+            return jsonify({"certificate": base64.b64encode(self.cert.public_bytes(
+                sc.serialization.Encoding.PEM
+            )).decode("utf-8")}), 200
+
         @self.app.route('/register', methods=['POST'])
         def register():
             """

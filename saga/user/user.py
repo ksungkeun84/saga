@@ -11,23 +11,15 @@ import json
 
 def get_provider_cert():
     """
-    This is a 'hack' to get the provider's certificate. Since the requests library
-    does not provide a way to get the certificate of the server, we have to use the 
-    socket library to get the certificate.
+    This is a 'smarter' way to get the provider's certificate. This function uses the requests library
+    to get the certificate of the server.
     """
     provider_url = saga.config.PROVIDER_URL
-    hostname, port = provider_url.split("//")[1].split(":")[0], provider_url.split("//")[1].split(":")[1]
-
-    context = ssl.create_default_context()
-    context.check_hostname = False
-    context.verify_mode = ssl.CERT_NONE
-
-    with socket.create_connection((hostname, port)) as sock:
-        with context.wrap_socket(sock, server_hostname=hostname) as ssock:
-            cert_der = ssock.getpeercert(binary_form=True)
-            cert = sc.x509.load_der_x509_certificate(cert_der)
+    response = requests.get(provider_url+"/certificate", verify=saga.config.CA_CERT_PATH)
+    cert_bytes = base64.b64decode(response.json().get('certificate'))
+    cert = sc.bytesToX509Certificate(cert_bytes)
+    
     return cert
-        
 
 # Instanciate the CA object:
 CA = get_SAGA_CA()
@@ -79,12 +71,9 @@ def register():
             os.mkdir(saga.config.USER_WORKDIR+"/keys")
         sc.save_ed25519_keys(saga.config.USER_WORKDIR+"/keys/"+email, private_key, public_key)
 
-
 def login():
     email = input("Enter email: ")
     password = input("Enter password: ")
-
-    cert = get_provider_cert()
 
     response = requests.post(f"{saga.config.PROVIDER_URL}/login", json={'uid': email, 'password': password}, verify=saga.config.CA_CERT_PATH) 
     if response.status_code == 200:
