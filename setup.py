@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="saga",
-    version="0.1.0",
+    version="0.2.0",
     author="Georgios Syros, Anshuman Suri",
     author_email="syros.g@northeastern",
     description="A project for secure user registration and authentication.",

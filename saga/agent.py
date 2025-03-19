@@ -234,6 +234,7 @@ class Agent:
         """
         Returns true if the conversation ended from the initiating side.
         """
+        agent_instance = None
 
         text = init_msg
         i = 0
@@ -259,9 +260,11 @@ class Agent:
                 return False
             response = json.loads(response.decode('utf-8'))
             # Process response:
-            print(f"Received: {response['msg']}")
-            text = self.local_agent.run(str(response.get("msg", None))) # TODO: Handle None (missing) msg gracefully
-
+            received_message = str(response.get("msg", None))
+            print(f"Received: {received_message}")
+             # TODO: Handle None (missing) msg gracefully
+            agent_instance, text = self.local_agent.run(query=received_message,
+                                                        agent_instance=agent_instance)
             
             i += 1
         print("WARNING: Maximum allowed number of queries in the conversation is reached. Ending conversation...")
@@ -271,6 +274,7 @@ class Agent:
         """
         Returns true if the conversation ended from the receiving side.
         """
+        agent_instance = None
         i = 0
         while i < MAX_QUERIES: 
             
@@ -298,7 +302,11 @@ class Agent:
                 print("Task deemed complete from initiating side.")
                 return False
 
-            response = self.local_agent.run(str(message.get("msg", None))) # TODO: Handle None (missing) msg gracefully
+            received_message = str(message.get("msg", None))
+            # TODO: Handle None (missing) msg gracefully
+            agent_instance, response = self.local_agent.run(query=received_message,
+                                                            agent_instance=agent_instance)
+
             if response == self.task_finished_token:
                 print("Task deemed complete from receiving side.")
                 return True
