@@ -47,23 +47,20 @@ class DummyAgent:
     """
     vocab = [
         "Hi",
-        "Hello"
-        #"Yeah this makes sense.",
-        #"I think I understand.",
-        #"I love apples",
-        #"I don't know.",
-        #"I'm not sure.",
-        #"I'm sorry, I don't understand.",
-        #"I'm sorry, I can't do that.",
-        #"Do you think that we have purpose?",
-        #"What is the meaning of life?",
+        "Hello",
+        "Yeah this makes sense.",
+        "I think I understand.",
+        "I love apples",
+        "I don't know.",
+        "I'm not sure.",
+        "I'm sorry, I don't understand.",
+        "I'm sorry, I can't do that.",
+        "Do you think that we have purpose?",
+        "What is the meaning of life?",
         "Do you think we are alone in the universe?",
         "I think we are alone in the universe.",
         "I think we are not alone in the universe.",
         'Faxxx',
-        "<TASK_FINISHED>",
-        "<TASK_FINISHED>",
-        "<TASK_FINISHED>",
         "<TASK_FINISHED>",
         "<TASK_FINISHED>",
         "<TASK_FINISHED>",
@@ -73,11 +70,11 @@ class DummyAgent:
     def __init__(self):
         self.task_finished_token = "<TASK_FINISHED>"
 
-    def run(self, query):
+    def run(self, query, agent_instance=None):
         time.sleep(1)
         if query == self.task_finished_token:
             return self.task_finished_token
-        return random.choice(DummyAgent.vocab)
+        return None, random.choice(DummyAgent.vocab)
 
 
 class Agent:
@@ -325,7 +322,7 @@ class Agent:
             conn.sendall(json.dumps(msg).encode('utf-8'))
             logger.log("AGENT", f"Sent: \'{msg['msg']}\'")
             if msg['msg'] == self.task_finished_token:
-                print("Task deemed complete from initiating side.")
+                logger.log("AGENT", "Task deemed complete from initiating side.")
                 return True
             # Receive response:
             response = conn.recv(MAX_BUFFER_SIZE) # TODO: vary buffer size depending on how long the LLM answers are going to be
@@ -334,13 +331,14 @@ class Agent:
                 return False
             response = json.loads(response.decode('utf-8'))
             # Process response:
-            logger.log("AGENT", f"Received: \'{response['msg']}\'")
-            if response == self.task_finished_token:
+            received_message = str(response.get("msg", self.local_agent.task_finished_token))
+            logger.log("AGENT", f"Received: \'{received_message}\'")
+            if received_message == self.task_finished_token:
                 logger.log("AGENT", "Task deemed complete from receiving side.")
                 return False
             
-            # Process response:
-            text = self.local_agent.run(str(response.get("msg", None))) # TODO: Handle None (missing) msg gracefully
+            # Process message:
+            agent_instance, text = self.local_agent.run(received_message, agent_instance=agent_instance)
 
             # Reduce the remaining quota for the token:
             self.received_tokens[token]["communication_quota"] = max(0, self.received_tokens[token]["communication_quota"] - 1)
@@ -364,10 +362,10 @@ class Agent:
                 logger.warn("Received b'' indicating that the connection might have been closed from the other side. Returning...")
                 return False
             
-            message = json.loads(message.decode('utf-8'))
+            message_dict = json.loads(message.decode('utf-8'))
             
             # Extract token from the message:
-            token = message.get("token", None)
+            token = message_dict.get("token", None)
             # Check if the token of the message is valid
             if not self.token_is_valid(token):
                 logger.error("Token is invalid. Ending conversation...")
@@ -376,16 +374,15 @@ class Agent:
             self.active_tokens[token]["communication_quota"] = max(0, self.active_tokens[token]["communication_quota"] - 1)
             
             # Process message:
-            logger.log("AGENT", f"Received: \'{message['msg']}\'")
+            received_message = str(message_dict.get("msg", self.local_agent.task_finished_token))
+            logger.log("AGENT", f"Received: \'{received_message}\'")
 
-            if message['msg'] == self.task_finished_token:
+            if received_message == self.task_finished_token:
                 logger.log("AGENT", "Task deemed complete from initiating side.")
                 return False
 
-            received_message = str(message.get("msg", None))
-            # TODO: Handle None (missing) msg gracefully
-            agent_instance, response = self.local_agent.run(query=received_message,
-                                                            agent_instance=agent_instance)
+            # Process message:
+            agent_instance, response = self.local_agent.run(query=received_message, agent_instance=agent_instance)
 
             if response == self.task_finished_token:
                 logger.log("AGENT", "Task deemed complete from receiving side.")
@@ -513,12 +510,12 @@ class Agent:
                     request_dict['aid'] = self.aid # The initiating agent's ID
 
                     # Check if you have a token:
-                    token = self.retrieve_valid_token(r_aid) # TODO: Implement this function.
+                    token = self.retrieve_valid_token(r_aid)
                     if token is None:
                         # If no token is found, the initiating agent must 
                         # receive a new one from the receiving agent.
                         # == X3DH protocol is used for token generation ==
-                        logger.log("ACCESS", f"No valid received token found. For {r_aid}. Will request new one.")
+                        logger.log("ACCESS", f"No valid received token found for {r_aid}. Will request new one.")
                         # Generate ephemeral keys:
                         sek, ek = sc.generate_x25519_keypair()
                         # and use one of the receiving agent's one-time pre-keys:
@@ -575,11 +572,14 @@ class Agent:
                             info=b"access-control-shdk-exchange",
                         ).derive(concat_secret)
 
+                        logger.log("ACCESS", f"Derived SDHK: {SDHK.hex()}")
+
                         # Receive the new token:
                         # The new token that is generated will be received as a string.
                         # This string is an encoding, i.e. an encryption of the token's
                         # metadata.
                         new_enc_token_str = response_dict.get("token", None)
+                        logger.log("ACCESS", f"Received token: {new_enc_token_str}")
 
                         # Decrypt the token:
                         token_dict = sc.decrypt_token(new_enc_token_str, SDHK)
@@ -605,12 +605,12 @@ class Agent:
 
         finally:
             try:
-                print("Attempting to close connection.")
+                logger.log("NETWORK", "Attempting to close connection.")
                 conn.shutdown(socket.SHUT_RDWR)
                 conn.close()
-                print("Connection closed.")
+                logger.log("NETWORK", "Connection succesfully closed.")
             except:
-                print("Connection already closed by other party.")
+                logger.log("NETWORK", "Connection already closed by other party.")
 
     def handle_i_agent_connection(self, conn, fromaddr):
         """
@@ -768,7 +768,7 @@ class Agent:
                                 info=b"access-control-shdk-exchange",
                             ).derive(concat_secret)
 
-                            logger.log("ACCESS", f"Generated SDHK: {SDHK.hex()}")
+                            logger.log("ACCESS", f"Derived SDHK: {SDHK.hex()}")
                             
                             # Generate the token:
                             enc_token_bytes = self.generate_token(i_identity_key, SDHK)
@@ -802,15 +802,14 @@ class Agent:
                     except Exception as e:
                         print(f"Error: {e}")
                         traceback.print_exc()
-
-            print(f"Connection from {fromaddr} closed.")
         finally:
             try:
+                logger.log("NETWORK", "Attempting to close connection.")
                 conn.shutdown(socket.SHUT_RDWR)
                 conn.close()
-                print(f"Conversation ended.")
+                logger.log("NETWORK", "Connection succesfully closed.")
             except:
-                print("Connection already closed by other party.")
+                logger.log("NETWORK", "Connection already closed by other party.")
 
     def listen(self):
         """
