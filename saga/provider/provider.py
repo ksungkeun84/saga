@@ -10,6 +10,8 @@ from datetime import datetime, timezone, timedelta
 import os
 import saga.config
 
+GOOGLE_CLIENT_ID = "598128652574-bh1oes4c5f5p22su48guffi65q2bobke.apps.googleusercontent.com"
+GOOGLE_CLIENT_SECRET = "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"
 
 class Provider:
     def __init__(
@@ -33,6 +35,9 @@ class Provider:
         self.app.config["MONGO_URI"] = mongo_uri
         self.app.config["JWT_SECRET_KEY"] = jwt_secret
 
+        self.app.config['GOOGLE_CLIENT_ID'] = GOOGLE_CLIENT_ID
+        self.app.config['GOOGLE_CLIENT_SECRET'] = GOOGLE_CLIENT_SECRET
+
         # Initialize MongoDB, JWT, and Bcrypt
         self.mongo = PyMongo(self.app)
         self.jwt = JWTManager(self.app)
@@ -44,11 +49,14 @@ class Provider:
         self.oauth = OAuth(self.app)
         self.google = self.oauth.register(
             name='google',
-            client_id='598128652574-bh1oes4c5f5p22su48guffi65q2bobke.apps.googleusercontent.com',
-            client_secret='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',
+            client_id=self.app.config['GOOGLE_CLIENT_ID'],
+            client_secret=self.app.config['GOOGLE_CLIENT_SECRET'],
             authorize_url='https://accounts.google.com/o/oauth2/auth',
             access_token_url='https://oauth2.googleapis.com/token',
+            access_token_params=None,
             client_kwargs={'scope': 'openid uid profile'},
+            uthorize_params={'prompt': 'consent', 'access_type': 'offline'},
+            api_base_url='https://www.googleapis.com/oauth2/v1/',
         )
 
         # MongoDB Collections
@@ -79,6 +87,10 @@ class Provider:
 
     def _register_routes(self):
         """Registers all Flask routes for the provider."""
+
+        @self.app.route('/')
+        def index():
+            return "<h1>Hello, World!</h1>"
 
         @self.app.route('/register', methods=['POST'])
         def register():
@@ -137,12 +149,12 @@ class Provider:
 
         @self.app.route('/oauth_login')
         def oauth_login():
-            return self.google.authorize_redirect(url_for('oauth_callback', _external=True, _scheme='https'))
+            return self.google.authorize_redirect(url_for('authorize', _external=True))
 
         @self.app.route('/oauth_callback')
         def oauth_callback():
             token = self.google.authorize_access_token()
-            user_info = self.google.get("https://www.googleapis.com/oauth2/v2/userinfo").json()
+            user_info = self.google.get("userinfo").json()
             
             uid = user_info["id"]
             user = self.users_collection.find_one({"uid": uid})

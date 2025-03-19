@@ -390,7 +390,7 @@ def encrypt_token(token_dict, sdhkey) -> bytes:
     # Return Base64-encoded encrypted data
     return encrypted_data
 
-def decrypt_token(encrypted_token, sdhkey):
+def decrypt_token(encrypted_token, sdhkey) -> dict:
 
     # Decode the encrypted token
     encrypted_data = base64.b64decode(encrypted_token.encode('utf-8'))
@@ -405,5 +405,5 @@ def decrypt_token(encrypted_token, sdhkey):
     decryptor = cipher.decryptor()
     token = decryptor.update(ciphertext) + decryptor.finalize()
 
-    return token.decode('utf-8')
+    return json.loads(token.decode('utf-8'))
 
