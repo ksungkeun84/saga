@@ -384,10 +384,6 @@ class Agent:
             # Process message:
             agent_instance, response = self.local_agent.run(query=received_message, agent_instance=agent_instance)
 
-            if response == self.task_finished_token:
-                logger.log("AGENT", "Task deemed complete from receiving side.")
-                return True
-
             # Prepare response:
             response_dict = {
                 "msg": response,
@@ -396,6 +392,10 @@ class Agent:
             # Send response:
             conn.sendall(json.dumps(response_dict).encode('utf-8'))
             logger.log("AGENT", f"Sent: \'{response_dict['msg']}\'")
+
+            if response_dict['msg'] == self.task_finished_token:
+                logger.log("AGENT", "Task deemed complete from receiving side.")
+                return True
 
             i += 1
 
