@@ -24,11 +24,11 @@ PROVIDER_CONFIG = {
     "STATE_NAME": "MA",
     "LOCALITY_NAME": "Boston",
     "ORG_NAME": "provider",
-    "COMMON_NAME": "localhost",
-    "IP": "127.0.0.1"
+    "COMMON_NAME": "nds2lambda",
+    "IP": "129.10.187.52"
 }
 PROVIDER_CERT_PATH = ROOT_DIR+'/provider/provider.crt'
-PROVIDER_URL = "https://localhost:5000"
+PROVIDER_URL = "https://129.10.187.52:5000"
 
 ### USER ###
 USER_WORKDIR = ROOT_DIR+"/user"

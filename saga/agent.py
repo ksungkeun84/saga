@@ -13,10 +13,11 @@ import saga.config
 from pathlib import Path
 import random
 from saga.logger import Logger as logger
+from saga.ca.CA import get_SAGA_CA
 
 DEBUG = False
 MAX_BUFFER_SIZE = 4096
-MAX_QUERIES = 10
+MAX_QUERIES = 50
 """"
 
 Agent class for the SAGA system.
@@ -24,6 +25,17 @@ Agent class for the SAGA system.
 """
 import saga.crypto as sc
 
+def get_provider_cert():
+    """
+    This is a 'smarter' way to get the provider's certificate. This function uses the requests library
+    to get the certificate of the server.
+    """
+    provider_url = saga.config.PROVIDER_URL
+    response = requests.get(provider_url+"/certificate", verify=saga.config.CA_CERT_PATH)
+    cert_bytes = base64.b64decode(response.json().get('certificate'))
+    cert = sc.bytesToX509Certificate(cert_bytes)
+    
+    return cert
 
 def get_agent_material(dir_path: Path):
     # Check if dir exists:
@@ -98,9 +110,12 @@ class Agent:
         self.port = material.get("port")
 
         # Provider Identity
-        self.PIK = sc.bytesToPublicEd25519Key(
-            base64.b64decode(material.get("pik"))
-        )
+        # Download provider certificate
+        provider_cert = get_provider_cert()
+        self.CA = get_SAGA_CA()
+        # Verify the provider certificate:
+        self.CA.verify(provider_cert) # if the verification fails an exception will be raised.
+        self.PIK = provider_cert.public_key()
 
         # Device Info Signature
         self.dev_info_sig = material.get("dev_info_sig")
@@ -156,8 +171,10 @@ class Agent:
 
         # Init token storing dicts:
         self.active_tokens = {} # Active tokens that were given to initiating agents from the agent.
+        self.active_tokens_lock = threading.Lock()
         self.aid_to_token = {} # dict that maps the aid of a receiving agent to the token that was given from them.
         self.received_tokens = {} # Tokens that were received from the receiving agents.
+        self.received_tokens_lock = threading.Lock()
 
         # Print:
         if DEBUG:
@@ -199,7 +216,7 @@ class Agent:
         expiration_timestamp = issue_timestamp + timedelta(hours=1)
 
         # Communication quota
-        communication_quota = 10  # Example quota
+        communication_quota = 5  # Example quota
 
         # Token dictionary
         token_dict = {
@@ -222,29 +239,29 @@ class Agent:
         - If it is expired, it is invalid.
         - If the communication quota is reached, it is invalid.
         """
-        if token not in self.active_tokens.keys():
-            print("Token not found.")
-            return False
+        with self.active_tokens_lock:
+            if token not in self.active_tokens.keys():
+                logger.error("Token provided by initiating not found in given tokens.")
+                return False
+            # Check if the token is still valid:
+            token_dict = self.active_tokens[token]
         
-        # Check if the token is still valid:
-        token_dict = self.active_tokens[token]
-        
-        # Check the expiration date
-        expiration_date = token_dict.get("expiration_timestamp")
-        expiration_timestamp = datetime.fromisoformat(expiration_date)        
-        if datetime.now(tz=timezone.utc) > expiration_timestamp:
-            print("Token expired.")
-            return False
-        
-        # Check the communication quota:
-        remaining_quota = token_dict.get("communication_quota")
-        if remaining_quota == 0:
-            print("Communication quota reached.")
-            return False
+            # Check the expiration date
+            expiration_date = token_dict.get("expiration_timestamp")
+            expiration_timestamp = datetime.fromisoformat(expiration_date)        
+            if datetime.now(tz=timezone.utc) > expiration_timestamp:
+                logger.error("Token expired.")
+                return False
+            
+            # Check the communication quota:
+            remaining_quota = token_dict.get("communication_quota")
+            if remaining_quota == 0:
+                logger.error("Token's max quota has been exceeded.")
+                return False
 
-        # TODO: Check if the recipient identity key is the same as the one that was used to initiate the convo.
+            # TODO: Check if the recipient identity key is the same as the one that was used to initiate the convo.
 
-        return True
+            return True
 
     def received_token_is_valid(self, token) -> bool:
         """
@@ -252,55 +269,51 @@ class Agent:
         - If it is expired, it is invalid.
         - If the communication quota is reached, it is invalid.
         """
-        if token not in self.received_tokens.keys():
-            print("Token not found.") 
-            return False
-        
-        # Check if the token is still valid:
-        token_dict = self.received_tokens[token]
-        
-        # Check the expiration date
-        expiration_date = token_dict.get("expiration_timestamp")
-        expiration_timestamp = datetime.fromisoformat(expiration_date)        
-        if datetime.now(tz=timezone.utc) > expiration_timestamp:
-            print("Token expired.")
-            # remove the token from the received tokens:
-            del self.received_tokens[token]
-            # remove the token from the aid_to_token dict:
-            for key, value in self.aid_to_token.items():
-                if value == token:
-                    del self.aid_to_token[key]
-            return False
-        
-        # Check the communication quota:
-        remaining_quota = token_dict.get("communication_quota")
-        if remaining_quota == 0:
-            print("Communication quota reached.")
-            # remove the token from the received tokens:
-            del self.received_tokens[token]
-            # remove the token from the aid_to_token dict:
-            for key, value in self.aid_to_token.items():
-                if value == token:
-                    del self.aid_to_token[key]
-            return False
+        with self.received_tokens_lock:
+            if token not in self.received_tokens.keys():
+                print("Token not found.") 
+                return False
+            
+            # Check if the token is still valid:
+            token_dict = self.received_tokens[token]
+            
+            # Check the expiration date
+            expiration_date = token_dict.get("expiration_timestamp")
+            expiration_timestamp = datetime.fromisoformat(expiration_date)        
+            if datetime.now(tz=timezone.utc) > expiration_timestamp:
+                print("Token expired.")
+                return False
+            
+            # Check the communication quota:
+            remaining_quota = token_dict.get("communication_quota")
+            if remaining_quota == 0:
+                print("Communication quota reached.")
+                return False
 
-        return True
+            return True
 
     def store_received_token(self, r_aid, token_str, token_dict):
         """
         Stores the token that was received from the receiving agent.
         """
-        self.received_tokens[token_str] = token_dict
-        self.aid_to_token[r_aid] = token_str
+        with self.received_tokens_lock:
+            self.received_tokens[token_str] = token_dict
+            self.aid_to_token[r_aid] = token_str
 
     def retrieve_valid_token(self, r_aid):
         """
         Retrieves a valid token for the receiving agent.
         """
-        token = self.aid_to_token.get(r_aid, None)
+        with self.received_tokens_lock: # THIS CREATES A DEADLOCK
+            token = self.aid_to_token.get(r_aid, None)
         if token is None:
             return None
-        if not self.received_token_is_valid(token):
+        if not self.received_token_is_valid(token): # THIS TRIES TO ACCESS THE SAME MUTEX LOCK --> DEADLOCK.
+            with self.received_tokens_lock:
+                # remove the token from the received tokens:
+                del self.received_tokens[token]
+                # remove the token from the aid_to_token dict:
+                del self.aid_to_token[r_aid]
             return None
         return token
 
@@ -312,15 +325,25 @@ class Agent:
 
         text = init_msg
         i = 0
-        while self.received_token_is_valid(token) and i < MAX_QUERIES:
+        while i < MAX_QUERIES:
             # Prepare message: 
             msg = {
                 "msg": text,
                 "token": token
             }
+            # Check if the received token that you are using is valid:
+            if not self.received_token_is_valid(token):
+                return True
+
             # Send message:
             conn.sendall(json.dumps(msg).encode('utf-8'))
             logger.log("AGENT", f"Sent: \'{msg['msg']}\'")
+
+            # Reduce the remaining quota for the token:
+            with self.received_tokens_lock:
+                self.received_tokens[token]["communication_quota"] = max(0, self.received_tokens[token]["communication_quota"] - 1)
+                print("remaining token quota:", self.received_tokens[token]["communication_quota"])
+
             if msg['msg'] == self.task_finished_token:
                 logger.log("AGENT", "Task deemed complete from initiating side.")
                 return True
@@ -330,6 +353,7 @@ class Agent:
                 logger.warn("Received b'' indicating that the connection might have been closed from the other side. Returning...")
                 return False
             response = json.loads(response.decode('utf-8'))
+            i += 1 # increment accepted queries counter
             # Process response:
             received_message = str(response.get("msg", self.local_agent.task_finished_token))
             logger.log("AGENT", f"Received: \'{received_message}\'")
@@ -339,11 +363,6 @@ class Agent:
             
             # Process message:
             agent_instance, text = self.local_agent.run(received_message, agent_instance=agent_instance)
-
-            # Reduce the remaining quota for the token:
-            self.received_tokens[token]["communication_quota"] = max(0, self.received_tokens[token]["communication_quota"] - 1)
-            
-            i += 1
         
         logger.warn("Maximum allowed number of queries in the conversation is reached. Ending conversation...")
         return True
@@ -354,24 +373,27 @@ class Agent:
         """
         agent_instance = None
         i = 0
-        while self.token_is_valid(token) and i < MAX_QUERIES: 
-            
-            # Receive message:
+        while i < MAX_QUERIES: 
+            # Receive message from the initiating side:
             message = conn.recv(MAX_BUFFER_SIZE)
             if not message:
                 logger.warn("Received b'' indicating that the connection might have been closed from the other side. Returning...")
                 return False
             
             message_dict = json.loads(message.decode('utf-8'))
-            
+            i += 1 # increment accepted queries counter
+
             # Extract token from the message:
             token = message_dict.get("token", None)
             # Check if the token of the message is valid
             if not self.token_is_valid(token):
                 logger.error("Token is invalid. Ending conversation...")
                 return True
+            
             # Reduce the remaining quota for the token:
-            self.active_tokens[token]["communication_quota"] = max(0, self.active_tokens[token]["communication_quota"] - 1)
+            with self.active_tokens_lock:
+                self.active_tokens[token]["communication_quota"] = max(0, self.active_tokens[token]["communication_quota"] - 1)
+                print('remaining token quota:', self.active_tokens[token]["communication_quota"])
             
             # Process message:
             received_message = str(message_dict.get("msg", self.local_agent.task_finished_token))
@@ -397,7 +419,7 @@ class Agent:
                 logger.log("AGENT", "Task deemed complete from receiving side.")
                 return True
 
-            i += 1
+            
 
         logger.warn("Maximum allowed number of queries in the conversation is reached. Ending conversation...")
         return True
@@ -587,13 +609,17 @@ class Agent:
                         self.store_received_token(r_aid, new_enc_token_str, token_dict)
                         
                         # Start the conversation:
-                        self.initiate_conversation(conn, new_enc_token_str, message)
-                        
+                        self.initiate_conversation(conn, new_enc_token_str, message)         
                     else:
                         logger.log("ACCESS", f"Valid token found. Will start conversation.")
                         # If a valid token was found, the expected response is a message.
-                        response_dict = json.loads(response.decode('utf-8'))
-                        self.initiate_conversation(conn, token)
+                        if response:
+                            response_dict = json.loads(response.decode('utf-8'))
+                            if response_dict["token"] is not None:
+                                self.initiate_conversation(conn, token, message)
+                            else:
+                                logger.error("Token rejected from receiving side.")
+                                
                     
 
         except ssl.SSLError as e:
@@ -779,21 +805,23 @@ class Agent:
                             ser_token_response = json.dumps(token_response).encode('utf-8')
                             
                             # Store the token:
-                            self.active_tokens[enc_token_str] = sc.decrypt_token(enc_token_str, SDHK)
+                            with self.active_tokens_lock:
+                                self.active_tokens[enc_token_str] = sc.decrypt_token(enc_token_str, SDHK)
 
                             conn.sendall(ser_token_response)
 
                             # Start the conversation:
                             logger.log("AGENT", f"Starting conversation with {i_aid}.")
                             self.receive_conversation(conn, enc_token_str)
-
                         else:
-                            # Check the token and see if it is in the firt
-                            # if i_token in self.active_tokens.keys():
-                            #     conn.shutdown(socket.SHUT_RDWR)
-                            #     conn.close()
-                            logger.error("EXISTING TOKEN LOGIC NOT IMPLEMENTED.")
-                            raise Exception("EXISTING TOKEN LOGIC NOT IMPLEMENTED.")
+                            # Check the token and see if it is in the active tokens:
+                            if self.token_is_valid(i_token):
+                                # If the token is valid, start the conversation:
+                                logger.log("ACCESS", f"Valid token found. Will accept conversation.")
+                                conn.sendall(json.dumps({"token": i_token}).encode('utf-8'))
+                                self.receive_conversation(conn, i_token)
+                            else:
+                                logger.error("Token is invalid. Ending connection.")
 
                     except json.JSONDecodeError:
                         print("Received invalid JSON format.")

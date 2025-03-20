@@ -256,11 +256,7 @@ def register_agent():
                 format=sc.serialization.PrivateFormat.Raw,
                 encryption_algorithm=sc.serialization.NoEncryption()
             )).decode("utf-8"),
-            "sopks": private_one_time_prekeys_2_b64,
-            "pik": base64.b64encode(PIK.public_bytes(
-                encoding=sc.serialization.Encoding.Raw,
-                format=sc.serialization.PublicFormat.Raw
-            )).decode("utf-8")
+            "sopks": private_one_time_prekeys_2_b64
         })
         spawn_agent(application)
     else:
