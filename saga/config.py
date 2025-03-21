@@ -2,7 +2,7 @@
 
 ROOT_DIR = "/home/georgios/saga/saga"
 
-### CA ###
+### CA ### (Runs on nds2 starscream)
 # Endpoint where CA hosts relevant files
 CA_ENDPOINT = "http://129.10.186.246:8000"
 
@@ -17,14 +17,14 @@ CA_CONFIG = {
 }
 CA_CERT_PATH = ROOT_DIR+'/ca/ca.crt'
 
-### PROVIDER ###
+### PROVIDER ### (Runs on nds2 lambda)
 PROVIDER_WORKDIR = ROOT_DIR+"/provider"
 PROVIDER_CONFIG = {
     "COUNTRY_NAME": "US",
     "STATE_NAME": "MA",
     "LOCALITY_NAME": "Boston",
     "ORG_NAME": "provider",
-    "COMMON_NAME": "nds2lambda",
+    "COMMON_NAME": "129.10.187.52", 
     "IP": "129.10.187.52"
 }
 PROVIDER_CERT_PATH = ROOT_DIR+'/provider/provider.crt'
