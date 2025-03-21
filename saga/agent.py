@@ -110,8 +110,9 @@ class Agent:
         self.port = material.get("port")
 
         # Provider Identity
-        # Download provider certificate
+        # Setup the SAGA CA:
         self.CA = get_SAGA_CA()
+        # Download provider certificate
         provider_cert = get_provider_cert()
         # Verify the provider certificate:
         self.CA.verify(provider_cert) # if the verification fails an exception will be raised.
@@ -263,7 +264,7 @@ class Agent:
 
             return True
 
-    def received_token_is_valid(self, token) -> bool:
+    def received_token_is_valid(self, token: str) -> bool:
         """
         Makes sure that the token that was received from the receiving agent is valid.
         - If it is expired, it is invalid.
@@ -325,14 +326,15 @@ class Agent:
 
         text = init_msg
         i = 0
-        while i < MAX_QUERIES:
+        while True:
             # Prepare message: 
             msg = {
                 "msg": text,
                 "token": token
             }
             # Check if the received token that you are using is valid:
-            if not self.received_token_is_valid(token):
+            if not self.received_token_is_valid(msg["token"]):
+                logger.error("Token is invalid. Ending conversation...")
                 return True
 
             # Send message:
@@ -342,18 +344,18 @@ class Agent:
             # Reduce the remaining quota for the token:
             with self.received_tokens_lock:
                 self.received_tokens[token]["communication_quota"] = max(0, self.received_tokens[token]["communication_quota"] - 1)
-                print("remaining token quota:", self.received_tokens[token]["communication_quota"])
+                logger.log('ACCESS', f'Remaining token quota: {self.received_tokens[token]["communication_quota"]}')
 
             if msg['msg'] == self.task_finished_token:
                 logger.log("AGENT", "Task deemed complete from initiating side.")
                 return True
             # Receive response:
-            response = conn.recv(MAX_BUFFER_SIZE) # TODO: vary buffer size depending on how long the LLM answers are going to be
+            response = conn.recv(MAX_BUFFER_SIZE)
             if not response:
                 logger.warn("Received b'' indicating that the connection might have been closed from the other side. Returning...")
                 return False
             response = json.loads(response.decode('utf-8'))
-            i += 1 # increment accepted queries counter
+
             # Process response:
             received_message = str(response.get("msg", self.local_agent.task_finished_token))
             logger.log("AGENT", f"Received: \'{received_message}\'")
@@ -362,10 +364,11 @@ class Agent:
                 return False
             
             # Process message:
+            if i > MAX_QUERIES:
+                logger.warn("Maximum allowed number of queries in the conversation is reached. Ending conversation...")
+                return True
             agent_instance, text = self.local_agent.run(received_message, agent_instance=agent_instance)
-        
-        logger.warn("Maximum allowed number of queries in the conversation is reached. Ending conversation...")
-        return True
+            i += 1 # increment queries counter
 
     def receive_conversation(self, conn, token: str) -> bool:
         """
@@ -373,18 +376,20 @@ class Agent:
         """
         agent_instance = None
         i = 0
-        while i < MAX_QUERIES: 
+        while True: 
+            
             # Receive message from the initiating side:
             message = conn.recv(MAX_BUFFER_SIZE)
             if not message:
                 logger.warn("Received b'' indicating that the connection might have been closed from the other side. Returning...")
                 return False
             
+            # If the message is not empty, process it:
             message_dict = json.loads(message.decode('utf-8'))
-            i += 1 # increment accepted queries counter
 
             # Extract token from the message:
             token = message_dict.get("token", None)
+            
             # Check if the token of the message is valid
             if not self.token_is_valid(token):
                 logger.error("Token is invalid. Ending conversation...")
@@ -393,7 +398,7 @@ class Agent:
             # Reduce the remaining quota for the token:
             with self.active_tokens_lock:
                 self.active_tokens[token]["communication_quota"] = max(0, self.active_tokens[token]["communication_quota"] - 1)
-                print('remaining token quota:', self.active_tokens[token]["communication_quota"])
+                logger.log('ACCESS', f'Remaining token quota: {self.active_tokens[token]["communication_quota"]}')
             
             # Process message:
             received_message = str(message_dict.get("msg", self.local_agent.task_finished_token))
@@ -403,9 +408,15 @@ class Agent:
                 logger.log("AGENT", "Task deemed complete from initiating side.")
                 return False
 
-            # Process message:
-            agent_instance, response = self.local_agent.run(query=received_message, agent_instance=agent_instance)
+            # Check if too many queries have been sent to your llm resources:
+            if i > MAX_QUERIES:
+                logger.warn("Maximum allowed number of queries in the conversation is reached. Ending conversation...")
+                return True
 
+            # Get agent response:
+            agent_instance, response = self.local_agent.run(query=received_message, agent_instance=agent_instance)
+            i+=1 # increase query counter
+            
             # Prepare response:
             response_dict = {
                 "msg": response,
@@ -418,11 +429,6 @@ class Agent:
             if response_dict['msg'] == self.task_finished_token:
                 logger.log("AGENT", "Task deemed complete from receiving side.")
                 return True
-
-            
-
-        logger.warn("Maximum allowed number of queries in the conversation is reached. Ending conversation...")
-        return True
 
     def connect(self, r_aid, message: str):
 
@@ -657,6 +663,7 @@ class Agent:
                         i_aid = received_msg.get("aid", None)
 
                         # Ask the provider for the details of the initiating agent:
+                        logger.log("ACCESS", f"Fetching crypto and device information for {i_aid} from the Provider.")
                         i_agent_material = self.lookup(i_aid)
 
                         # Perform verification checks:                                
@@ -695,7 +702,7 @@ class Agent:
                         }
 
                         i_public_signing_key_sig_bytes = i_agent_material.get("public_signing_key_sig")
-
+                        logger.log("CRYPTO", f"Verifying {i_aid} identity.")
                         try:
                             user_identity_key.verify(
                                 i_public_signing_key_sig_bytes,
@@ -722,6 +729,7 @@ class Agent:
                         }
                         dev_info_sig_bytes = i_agent_material.get("dev_info_sig")
 
+                        logger.log("CRYPTO", f"Verifying {i_aid} device information.")
                         try:
                             user_identity_key.verify(
                                 dev_info_sig_bytes,
