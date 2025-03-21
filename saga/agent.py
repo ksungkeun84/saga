@@ -110,9 +110,10 @@ class Agent:
         self.port = material.get("port")
 
         # Provider Identity
+        # Setup the SAGA CA:
+        self.CA = get_SAGA_CA()
         # Download provider certificate
         provider_cert = get_provider_cert()
-        self.CA = get_SAGA_CA()
         # Verify the provider certificate:
         self.CA.verify(provider_cert) # if the verification fails an exception will be raised.
         self.PIK = provider_cert.public_key()
