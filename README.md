@@ -10,6 +10,11 @@ Make sure that `mongoDB` is installed on the Provider side and the mongoDB serve
 
 ## Instructions
 
+#### Setup
+
+1. Generate valid credentials and host the *.crt, *.key, and *pub files at some endpoint (specified via `CA_ENDPOINT` in `config.py`)
+2. Generate provider credentials and host the provider service at some endpoint (specified via `PROVIDER_URL` in `config.py)
+
 ### 1. Provider
 
 The first step is to fire-up the provider. This is done by navigating into the provider's directory and running the `provider.py` script:

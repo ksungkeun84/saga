@@ -111,8 +111,8 @@ class Agent:
 
         # Provider Identity
         # Download provider certificate
-        provider_cert = get_provider_cert()
         self.CA = get_SAGA_CA()
+        provider_cert = get_provider_cert()
         # Verify the provider certificate:
         self.CA.verify(provider_cert) # if the verification fails an exception will be raised.
         self.PIK = provider_cert.public_key()
