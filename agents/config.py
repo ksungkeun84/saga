@@ -57,7 +57,7 @@ class AgentConfig(Serializable):
     """List of additional authorized imports for the agent."""
     api_base: Optional[str] = None
     """API base URL for the agent, if using an API model."""
-    api_key: Optional[str] = None
+    api_key: Optional[str] = "token-abc123"
     """API key for the agent, if using an API model."""
     model_type: Optional[str] =  "TransformersModel"
     """Type of backbone model for the agent. One of: TransformersModel, HfApiModel (for now; will add support later)"""
