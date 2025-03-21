@@ -69,12 +69,12 @@ class Provider:
         # Load TLS signing keys:
         if not (os.path.exists(self.workdir+f"{self.name}.key") and os.path.exists(self.workdir+f"{self.name}.pub") and os.path.exists(self.workdir+f"{self.name}.crt")):
             # Generate cryptographic material for signing. 
-            self.SPIK, self.PIK = sc.generate_ed25519_keypair()
-            self.cert = self.CA.sign(self.PIK, config=saga.config.PROVIDER_CONFIG)
-            sc.save_ed25519_keys(self.workdir+f"{self.name}", self.SPIK, self.PIK)
+            self.SK_Prov, self.PK_Prov = sc.generate_ed25519_keypair()
+            self.cert = self.CA.sign(self.PK_Prov, config=saga.config.PROVIDER_CONFIG)
+            sc.save_ed25519_keys(self.workdir+f"{self.name}", self.SK_Prov, self.PK_Prov)
             sc.save_x509_certificate(self.workdir+f"{self.name}", self.cert)
         else:
-            self.SPIK, self.PIK = sc.load_ed25519_keys(self.workdir+f"{self.name}")
+            self.SK_Prov, self.PK_Prov = sc.load_ed25519_keys(self.workdir+f"{self.name}")
             self.cert = sc.load_x509_certificate(self.workdir+f"{self.name}.crt")
         self.ssl_context = (self.workdir+f"{self.name}.crt", self.workdir+f"{self.name}.key")
 
@@ -232,13 +232,13 @@ class Provider:
             # - the aid, 
             # - device name, 
             # - IP address, port, and 
-            # - the provider's public identity key (PIK). 
+            # - the provider's public identity key (PK_Prov). 
             dev_info = {
                 "aid": aid, 
                 "device": device, 
                 "IP": ip, 
                 "port": port, 
-                "pik": self.PIK.public_bytes(
+                "pk_prov": self.PK_Prov.public_bytes(
                     encoding=sc.serialization.Encoding.Raw,
                     format=sc.serialization.PublicFormat.Raw)
             }
@@ -258,7 +258,7 @@ class Provider:
             # Next, we need to berify the agent identity block. This block includes
             # - the agent's aid,
             # - the agent's public signing key, and
-            # - the provider's public identity key (PIK).
+            # - the provider's public identity key (PK_Prov).
             # i.e. we need to confirm that the public key of the certificate was 
             # signed by the user. (Note: this is not self-signing. Keep in mind that
             # the user is a different entity than the agent.)
@@ -278,7 +278,7 @@ class Provider:
             agent_identity = {
                 "aid": aid,
                 "public_signing_key": public_signing_key_bytes,
-                "pik": self.PIK.public_bytes(
+                "pk_prov": self.PK_Prov.public_bytes(
                     encoding=sc.serialization.Encoding.Raw,
                     format=sc.serialization.PublicFormat.Raw)
             }

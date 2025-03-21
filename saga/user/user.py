@@ -29,7 +29,7 @@ CA = get_SAGA_CA()
 PROVIDER_CERT = get_provider_cert()
 # Verify the provider certificate:
 CA.verify(PROVIDER_CERT) # if the verification fails an exception will be raised.
-PIK = PROVIDER_CERT.public_key()
+PK_Prov = PROVIDER_CERT.public_key()
 
 # User state:
 provider_tokens = []
@@ -113,7 +113,7 @@ def register_agent():
         "device":device, 
         "IP":IP, 
         "port":port, 
-        "pik": PIK.public_bytes(
+        "pk_prov": PK_Prov.public_bytes(
             encoding=sc.serialization.Encoding.Raw,
             format=sc.serialization.PublicFormat.Raw)
     }
@@ -137,7 +137,7 @@ def register_agent():
         "public_signing_key":public_signing_key.public_bytes(
             encoding=sc.serialization.Encoding.Raw,
             format=sc.serialization.PublicFormat.Raw),
-        "pik": PIK.public_bytes(
+        "pk_prov": PK_Prov.public_bytes(
             encoding=sc.serialization.Encoding.Raw,
             format=sc.serialization.PublicFormat.Raw)
     }
@@ -182,7 +182,7 @@ def register_agent():
         'IP': IP,
         # The host device port
         'port': port,
-        # The signature of the device info (aid, device, IP, port, PIK)
+        # The signature of the device info (aid, device, IP, port, PK_Prov)
         'dev_info_sig': base64.b64encode(dev_info_sig).decode("utf-8"),
         
         # The public TLS signing key of the agent # PK!!!!!! TODO: UPDATE TO CERTIFICATE
@@ -194,7 +194,7 @@ def register_agent():
         'agent_cert': base64.b64encode(
             agent_cert.public_bytes(sc.serialization.Encoding.PEM)
         ).decode("utf-8"),
-        # and its signature = sign_{user_secret_identity_key}(aid, public_signing_key, PIK)
+        # and its signature = sign_{user_secret_identity_key}(aid, public_signing_key, PK_Prov)
         'public_signing_key_sig': base64.b64encode(agent_identity_sig).decode("utf-8"),
         
         # Agent Identity Key (IK):

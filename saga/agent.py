@@ -116,7 +116,7 @@ class Agent:
         provider_cert = get_provider_cert()
         # Verify the provider certificate:
         self.CA.verify(provider_cert) # if the verification fails an exception will be raised.
-        self.PIK = provider_cert.public_key()
+        self.PK_Prov = provider_cert.public_key()
 
         # Device Info Signature
         self.dev_info_sig = material.get("dev_info_sig")
@@ -468,7 +468,7 @@ class Agent:
         r_agent_identity = {
             "aid": r_aid,
             "public_signing_key": r_agent_public_signing_key_bytes,
-            "pik": self.PIK.public_bytes(
+            "pk_prov": self.PK_Prov.public_bytes(
                 encoding=sc.serialization.Encoding.Raw,
                 format=sc.serialization.PublicFormat.Raw)
         }
@@ -496,7 +496,7 @@ class Agent:
             "device": r_device, 
             "IP": r_ip, 
             "port": r_port, 
-            "pik": self.PIK.public_bytes(
+            "pk_prov": self.PK_Prov.public_bytes(
                 encoding=sc.serialization.Encoding.Raw,
                 format=sc.serialization.PublicFormat.Raw)
         }
@@ -696,7 +696,7 @@ class Agent:
                         i_agent_identity = {
                             "aid": i_aid,
                             "public_signing_key": i_agent_public_signing_key_bytes,
-                            "pik": self.PIK.public_bytes(
+                            "pk_prov": self.PK_Prov.public_bytes(
                                 encoding=sc.serialization.Encoding.Raw,
                                 format=sc.serialization.PublicFormat.Raw)
                         }
@@ -723,7 +723,7 @@ class Agent:
                             "device": i_device, 
                             "IP": i_ip, 
                             "port": i_port, 
-                            "pik": self.PIK.public_bytes(
+                            "pk_prov": self.PK_Prov.public_bytes(
                                 encoding=sc.serialization.Encoding.Raw,
                                 format=sc.serialization.PublicFormat.Raw)
                         }
