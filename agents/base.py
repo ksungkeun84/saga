@@ -33,7 +33,7 @@ class AgentWrapper:
         PROMPT_TO_USE: PromptTemplates = yaml.safe_load(
             importlib.resources.files("smolagents.prompts").joinpath("code_agent.yaml").read_text()
         )
-        PROMPT_TO_USE.system_prompt += TASK_FINISH_INSTR
+        PROMPT_TO_USE["system_prompt"] += TASK_FINISH_INSTR
 
         # Store details needed to create a new agent instance
         self.prompt_for_agent = PROMPT_TO_USE   
@@ -174,7 +174,7 @@ class AgentWrapper:
             add_base_tools = True,
             additional_authorized_imports=self.config.additional_authorized_imports,
             verbosity_level=2,
-            system_prompt=self.prompt_for_agent
+            prompt_templates=self.prompt_for_agent
         )
         return agent
 
