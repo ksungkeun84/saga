@@ -446,8 +446,8 @@ class Agent:
         # ========================================================================    
 
         # Retrieve user identity key: 
-        user_identity_key = sc.bytesToPublicEd25519Key(
-            r_agent_material.get("user_identity_key", None)
+        pk_u = sc.bytesToPublicEd25519Key(
+            r_agent_material.get("pk_u", None)
         )
     
         # Verify the agent's identity:
@@ -477,7 +477,7 @@ class Agent:
 
         logger.log("CRYPTO", f"Verifying {r_aid} identity.")
         try:
-            user_identity_key.verify(
+            pk_u.verify(
                 r_public_signing_key_sig_bytes,
                 str(r_agent_identity).encode("utf-8")
             )
@@ -504,7 +504,7 @@ class Agent:
 
         logger.log("CRYPTO", f"Verifying {r_aid} device information.")
         try:
-            user_identity_key.verify(
+            pk_u.verify(
                 dev_info_sig_bytes,
                 str(dev_info).encode("utf-8")
             )
@@ -673,8 +673,8 @@ class Agent:
                     
 
                         # Retrieve user identity key: 
-                        user_identity_key = sc.bytesToPublicEd25519Key(
-                            i_agent_material.get("user_identity_key", None)
+                        pk_u = sc.bytesToPublicEd25519Key(
+                            i_agent_material.get("pk_u", None)
                         )
                     
                         # Verify the agent's identity:
@@ -704,7 +704,7 @@ class Agent:
                         i_public_signing_key_sig_bytes = i_agent_material.get("public_signing_key_sig")
                         logger.log("CRYPTO", f"Verifying {i_aid} identity.")
                         try:
-                            user_identity_key.verify(
+                            pk_u.verify(
                                 i_public_signing_key_sig_bytes,
                                 str(i_agent_identity).encode("utf-8")
                             )
@@ -731,7 +731,7 @@ class Agent:
 
                         logger.log("CRYPTO", f"Verifying {i_aid} device information.")
                         try:
-                            user_identity_key.verify(
+                            pk_u.verify(
                                 dev_info_sig_bytes,
                                 str(dev_info).encode("utf-8")
                             )
@@ -757,7 +757,7 @@ class Agent:
                             i_spk_bytes = i_agent_material.get("signed_pre_key", None)
                             i_spk_sig_bytes = i_agent_material.get("signed_pre_key_sig", None)
 
-                            user_identity_key.verify(
+                            pk_u.verify(
                                 i_spk_sig_bytes,
                                 i_spk_bytes
                             )

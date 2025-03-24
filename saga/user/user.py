@@ -44,15 +44,15 @@ def register():
     password = input("Enter password: ")
 
     print("Generating cryptographic material...")
-    # Generate user identity key pair:
-    private_key, public_key = sc.generate_ed25519_keypair()
+    # Generate user signing key pair:
+    sk_u, pk_u = sc.generate_ed25519_keypair()
 
     response = requests.post(f"{saga.config.PROVIDER_URL}/register", json={
         'uid': email, # uid
         'password': password, # pwd 
         # CRYPTOGRAPHIC MATERIAL TO SUBMIT TO THE PROVIDER:
         # - PUBLIC IDENTITY KEY OF USER FOR SIGNING
-        'identity_key': base64.b64encode(public_key.public_bytes(
+        'pk_u': base64.b64encode(pk_u.public_bytes(
             encoding=sc.serialization.Encoding.Raw,
             format=sc.serialization.PublicFormat.Raw
         )).decode("utf-8")
@@ -62,14 +62,14 @@ def register():
         # Store the uid:
         state['uid'] = email
         # Store the key pair:
-        state['keys']['identity'] = {
-            'public': public_key,
-            'private': private_key
+        state['keys']['signing'] = {
+            'public': pk_u,
+            'private': sk_u
         }
         # Save the keys to disk:
         if not os.path.exists(saga.config.USER_WORKDIR+"/keys"):
             os.mkdir(saga.config.USER_WORKDIR+"/keys")
-        sc.save_ed25519_keys(saga.config.USER_WORKDIR+"/keys/"+email, private_key, public_key)
+        sc.save_ed25519_keys(saga.config.USER_WORKDIR+"/keys/"+email, sk_u, pk_u)
 
 def login():
     email = input("Enter email: ")
@@ -82,10 +82,10 @@ def login():
         provider_tokens.append(token)
         state["uid"] = email
         # Load the keys from disk:
-        private_key, public_key = sc.load_ed25519_keys("./keys/"+email)
-        state['keys']['identity'] = {
-            'public': public_key,
-            'private': private_key
+        sk_u, pk_u = sc.load_ed25519_keys("./keys/"+email)
+        state['keys']['signing'] = {
+            'public': pk_u,
+            'secret': sk_u
         }
         return token
     else:
@@ -117,7 +117,7 @@ def register_agent():
             encoding=sc.serialization.Encoding.Raw,
             format=sc.serialization.PublicFormat.Raw)
     }
-    dev_info_sig = state['keys']['identity']['private'].sign(str(dev_info).encode("utf-8"))
+    dev_info_sig = state['keys']['signing']['secret'].sign(str(dev_info).encode("utf-8"))
 
     # Generate TLS signing keys for the Agent:
     private_signing_key, public_signing_key = sc.generate_ed25519_keypair() # SK_A, PK_A
@@ -141,7 +141,7 @@ def register_agent():
             encoding=sc.serialization.Encoding.Raw,
             format=sc.serialization.PublicFormat.Raw)
     }
-    agent_identity_sig = state['keys']['identity']['private'].sign(str(agent_identity).encode("utf-8"))
+    agent_identity_sig = state['keys']['signing']['secret'].sign(str(agent_identity).encode("utf-8"))
 
     # -- ACCESS CONTROL KEYS -- :
     # Generate Agent Identity Key Pair:
@@ -149,7 +149,7 @@ def register_agent():
     # Generate Signed Pre-Keys:
     private_signed_prekey, public_signed_prekey = sc.generate_x25519_keypair()
     # --> Sign the public pre-key:
-    spk_sig = state['keys']['identity']['private'].sign(public_signed_prekey.public_bytes(
+    spk_sig = state['keys']['signing']['secret'].sign(public_signed_prekey.public_bytes(
         encoding=sc.serialization.Encoding.Raw,
         format=sc.serialization.PublicFormat.Raw)
     )
