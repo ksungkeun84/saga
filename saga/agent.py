@@ -122,8 +122,8 @@ class Agent:
         self.dev_info_sig = material.get("dev_info_sig")
 
         # TLS signing keys for the Agent:
-        self.private_signing_key = sc.bytesToPrivateEd25519Key(
-            base64.b64decode(material.get("private_signing_key"))
+        self.sk_a = sc.bytesToPrivateEd25519Key(
+            base64.b64decode(material.get("secret_signing_key"))
         )
 
         # Load the agent's certificates
@@ -131,10 +131,10 @@ class Agent:
             base64.b64decode(material.get("agent_cert"))
         )
 
-        self.public_signing_key = self.cert.public_key()
+        self.pk_a = self.cert.public_key()
 
         # Save the key and certificate:
-        sc.save_ed25519_keys(self.workdir+"agent", self.private_signing_key, self.public_signing_key)
+        sc.save_ed25519_keys(self.workdir+"agent", self.sk_a, self.pk_a)
         sc.save_x509_certificate(self.workdir+"agent", self.cert)
 
         # Agent Identity Key Pair:
@@ -467,7 +467,7 @@ class Agent:
         
         r_agent_identity = {
             "aid": r_aid,
-            "public_signing_key": r_agent_public_signing_key_bytes,
+            "pk_a": r_agent_public_signing_key_bytes,
             "pk_prov": self.PK_Prov.public_bytes(
                 encoding=sc.serialization.Encoding.Raw,
                 format=sc.serialization.PublicFormat.Raw)
@@ -695,7 +695,7 @@ class Agent:
                         
                         i_agent_identity = {
                             "aid": i_aid,
-                            "public_signing_key": i_agent_public_signing_key_bytes,
+                            "pk_a": i_agent_public_signing_key_bytes,
                             "pk_prov": self.PK_Prov.public_bytes(
                                 encoding=sc.serialization.Encoding.Raw,
                                 format=sc.serialization.PublicFormat.Raw)

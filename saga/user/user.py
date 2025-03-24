@@ -120,21 +120,21 @@ def register_agent():
     dev_info_sig = state['keys']['signing']['secret'].sign(str(dev_info).encode("utf-8"))
 
     # Generate TLS signing keys for the Agent:
-    private_signing_key, public_signing_key = sc.generate_ed25519_keypair() # SK_A, PK_A
+    sk_a, pk_a = sc.generate_ed25519_keypair() # SK_A, PK_A
 
     # Generate the certificate of the Agent for TLS communication:
     custom_agent_config = saga.config.AGENT_DEFAULT_CONFIG.copy()
     custom_agent_config["COMMON_NAME"] = aid
     custom_agent_config["IP"] = IP
     agent_cert = CA.sign(
-        public_key=public_signing_key, # PK_A
+        public_key=pk_a, # PK_A
         config=custom_agent_config
     )
 
 
     agent_identity = {
         "aid":aid,
-        "public_signing_key":public_signing_key.public_bytes(
+        "pk_a":pk_a.public_bytes(
             encoding=sc.serialization.Encoding.Raw,
             format=sc.serialization.PublicFormat.Raw),
         "pk_prov": PK_Prov.public_bytes(
@@ -184,17 +184,11 @@ def register_agent():
         'port': port,
         # The signature of the device info (aid, device, IP, port, PK_Prov)
         'dev_info_sig': base64.b64encode(dev_info_sig).decode("utf-8"),
-        
-        # The public TLS signing key of the agent # PK!!!!!! TODO: UPDATE TO CERTIFICATE
-        # 'public_signing_key': base64.b64encode(public_signing_key.public_bytes(
-        #     encoding=sc.serialization.Encoding.Raw,
-        #     format=sc.serialization.PublicFormat.Raw)).decode("utf-8"),
-        
-        # The agent certificate containing the agent's public_signing_key
+        # The agent certificate containing the agent's public signing key
         'agent_cert': base64.b64encode(
             agent_cert.public_bytes(sc.serialization.Encoding.PEM)
         ).decode("utf-8"),
-        # and its signature = sign_{user_secret_identity_key}(aid, public_signing_key, PK_Prov)
+        # and its signature = sign_{user_secret_identity_key}(aid, PK_A, PK_Prov)
         'public_signing_key_sig': base64.b64encode(agent_identity_sig).decode("utf-8"),
         
         # Agent Identity Key (IK):
@@ -225,8 +219,8 @@ def register_agent():
         print(f"Agent {name} registered successfully.")  
         state['agents'][name]= {
             'signing_key': {
-                'public': public_signing_key,
-                'private': private_signing_key
+                'public': pk_a,
+                'secret': sk_a
             },
             'identity_key': {
                 'public': public_identity_key,
@@ -241,7 +235,7 @@ def register_agent():
         # Spawn Agent with the given material:
         
         application.update({
-            "private_signing_key": base64.b64encode(private_signing_key.private_bytes(
+            "secret_signing_key": base64.b64encode(sk_a.private_bytes(
                 encoding=sc.serialization.Encoding.Raw,
                 format=sc.serialization.PrivateFormat.Raw,
                 encryption_algorithm=sc.serialization.NoEncryption()

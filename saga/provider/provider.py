@@ -269,15 +269,15 @@ class Provider:
             agent_cert = sc.bytesToX509Certificate(agent_cert_bytes)
 
             # Extract the public signing key and its signature
-            public_signing_key_bytes = agent_cert.public_key().public_bytes(
+            pk_a_bytes = agent_cert.public_key().public_bytes(
                 encoding=sc.serialization.Encoding.Raw,
                 format=sc.serialization.PublicFormat.Raw
             ) 
-            public_signing_key_sig_bytes = base64.b64decode(application.get("public_signing_key_sig"))
+            agent_identity_sig_bytes = base64.b64decode(application.get("public_signing_key_sig"))
 
             agent_identity = {
                 "aid": aid,
-                "public_signing_key": public_signing_key_bytes,
+                "pk_a": pk_a_bytes,
                 "pk_prov": self.PK_Prov.public_bytes(
                     encoding=sc.serialization.Encoding.Raw,
                     format=sc.serialization.PublicFormat.Raw)
@@ -286,7 +286,7 @@ class Provider:
             # Use the user's identity key for the verification of tha agent's identity.
             try:
                 pk_u.verify(
-                    public_signing_key_sig_bytes,
+                    agent_identity_sig_bytes,
                     str(agent_identity).encode("utf-8")
                 )
             except:
@@ -333,7 +333,7 @@ class Provider:
                 "dev_info_sig": dev_info_sig_bytes,
                 "identity_key": agent_identity_key_bytes,
                 "agent_cert": agent_cert_bytes,
-                "public_signing_key_sig": public_signing_key_sig_bytes,
+                "public_signing_key_sig": agent_identity_sig_bytes,
                 "signed_pre_key": spk_bytes,
                 "signed_pre_key_sig": spk_sig_bytes,
                 "one_time_pre_keys": opks_bytes
