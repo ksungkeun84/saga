@@ -69,12 +69,12 @@ class Provider:
         # Load TLS signing keys:
         if not (os.path.exists(self.workdir+f"{self.name}.key") and os.path.exists(self.workdir+f"{self.name}.pub") and os.path.exists(self.workdir+f"{self.name}.crt")):
             # Generate cryptographic material for signing. 
-            self.SPIK, self.PIK = sc.generate_ed25519_keypair()
-            self.cert = self.CA.sign(self.PIK, config=saga.config.PROVIDER_CONFIG)
-            sc.save_ed25519_keys(self.workdir+f"{self.name}", self.SPIK, self.PIK)
+            self.SK_Prov, self.PK_Prov = sc.generate_ed25519_keypair()
+            self.cert = self.CA.sign(self.PK_Prov, config=saga.config.PROVIDER_CONFIG)
+            sc.save_ed25519_keys(self.workdir+f"{self.name}", self.SK_Prov, self.PK_Prov)
             sc.save_x509_certificate(self.workdir+f"{self.name}", self.cert)
         else:
-            self.SPIK, self.PIK = sc.load_ed25519_keys(self.workdir+f"{self.name}")
+            self.SK_Prov, self.PK_Prov = sc.load_ed25519_keys(self.workdir+f"{self.name}")
             self.cert = sc.load_x509_certificate(self.workdir+f"{self.name}.crt")
         self.ssl_context = (self.workdir+f"{self.name}.crt", self.workdir+f"{self.name}.key")
 
@@ -115,13 +115,13 @@ class Provider:
 
             # Store password hash and identity key in the database.
             hashed_pw = self.bcrypt.generate_password_hash(password).decode("utf-8")
-            identity_key = data.get("identity_key")
-            identity_key_bytes = base64.b64decode(identity_key)
+            pk_u = data.get("pk_u")
+            pk_u_bytes = base64.b64decode(pk_u)
 
             self.users_collection.insert_one({
                 "uid": uid,
                 "password": hashed_pw,
-                "identity_key": identity_key_bytes,
+                "pk_u": pk_u_bytes,
                 "auth_tokens": []
             })
 
@@ -232,23 +232,23 @@ class Provider:
             # - the aid, 
             # - device name, 
             # - IP address, port, and 
-            # - the provider's public identity key (PIK). 
+            # - the provider's public identity key (PK_Prov). 
             dev_info = {
                 "aid": aid, 
                 "device": device, 
                 "IP": ip, 
                 "port": port, 
-                "pik": self.PIK.public_bytes(
+                "pk_prov": self.PK_Prov.public_bytes(
                     encoding=sc.serialization.Encoding.Raw,
                     format=sc.serialization.PublicFormat.Raw)
             }
             dev_info_sig_bytes = base64.b64decode(application.get("dev_info_sig"))
             # The device information block was signed by the user. We need the identity
             # key of the user to verify the signature.
-            user_identity_key = sc.bytesToPublicEd25519Key(user["identity_key"])
+            pk_u = sc.bytesToPublicEd25519Key(user["pk_u"])
 
             try:
-                user_identity_key.verify(
+                pk_u.verify(
                     dev_info_sig_bytes,
                     str(dev_info).encode("utf-8")
                 )
@@ -258,7 +258,7 @@ class Provider:
             # Next, we need to berify the agent identity block. This block includes
             # - the agent's aid,
             # - the agent's public signing key, and
-            # - the provider's public identity key (PIK).
+            # - the provider's public identity key (PK_Prov).
             # i.e. we need to confirm that the public key of the certificate was 
             # signed by the user. (Note: this is not self-signing. Keep in mind that
             # the user is a different entity than the agent.)
@@ -269,24 +269,24 @@ class Provider:
             agent_cert = sc.bytesToX509Certificate(agent_cert_bytes)
 
             # Extract the public signing key and its signature
-            public_signing_key_bytes = agent_cert.public_key().public_bytes(
+            pk_a_bytes = agent_cert.public_key().public_bytes(
                 encoding=sc.serialization.Encoding.Raw,
                 format=sc.serialization.PublicFormat.Raw
             ) 
-            public_signing_key_sig_bytes = base64.b64decode(application.get("public_signing_key_sig"))
+            agent_identity_sig_bytes = base64.b64decode(application.get("public_signing_key_sig"))
 
             agent_identity = {
                 "aid": aid,
-                "public_signing_key": public_signing_key_bytes,
-                "pik": self.PIK.public_bytes(
+                "pk_a": pk_a_bytes,
+                "pk_prov": self.PK_Prov.public_bytes(
                     encoding=sc.serialization.Encoding.Raw,
                     format=sc.serialization.PublicFormat.Raw)
             }
 
             # Use the user's identity key for the verification of tha agent's identity.
             try:
-                user_identity_key.verify(
-                    public_signing_key_sig_bytes,
+                pk_u.verify(
+                    agent_identity_sig_bytes,
                     str(agent_identity).encode("utf-8")
                 )
             except:
@@ -301,7 +301,7 @@ class Provider:
 
             # Verify the signed pre-key signature using the user's identity key.
             try:
-                user_identity_key.verify(spk_sig_bytes, spk_bytes)
+                pk_u.verify(spk_sig_bytes, spk_bytes)
             except:
                 return jsonify({"message": "Invalid signed pre-key signature"}), 401
 
@@ -333,7 +333,7 @@ class Provider:
                 "dev_info_sig": dev_info_sig_bytes,
                 "identity_key": agent_identity_key_bytes,
                 "agent_cert": agent_cert_bytes,
-                "public_signing_key_sig": public_signing_key_sig_bytes,
+                "public_signing_key_sig": agent_identity_sig_bytes,
                 "signed_pre_key": spk_bytes,
                 "signed_pre_key_sig": spk_sig_bytes,
                 "one_time_pre_keys": opks_bytes
@@ -360,8 +360,8 @@ class Provider:
             if user_metadata is None:
                 return jsonify({"message":"Cannot find agent owner."}), 404
             # Include the user's identity key in the response
-            user_identity_key = user_metadata.get("identity_key")
-            agent_metadata.update({"user_identity_key": user_identity_key})
+            pk_u = user_metadata.get("pk_u")
+            agent_metadata.update({"pk_u": pk_u})
             # Remove the one time pre-keys from the response
             agent_metadata.pop("one_time_pre_keys", None)
 
@@ -397,8 +397,8 @@ class Provider:
                 return jsonify({"message": "Agent not found or no keys left."}), 404
 
             # Include the user's identity key in the response
-            user_identity_key = user_metadata.get("identity_key")
-            agent_metadata.update({"user_identity_key": user_identity_key})
+            pk_u = user_metadata.get("pk_u")
+            agent_metadata.update({"pk_u": pk_u})
             # Remove the one time pre-keys from the response
             agent_metadata['one_time_pre_keys'] = [agent_metadata['one_time_pre_keys'][0]]
 

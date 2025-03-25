@@ -116,14 +116,14 @@ class Agent:
         provider_cert = get_provider_cert()
         # Verify the provider certificate:
         self.CA.verify(provider_cert) # if the verification fails an exception will be raised.
-        self.PIK = provider_cert.public_key()
+        self.PK_Prov = provider_cert.public_key()
 
         # Device Info Signature
         self.dev_info_sig = material.get("dev_info_sig")
 
         # TLS signing keys for the Agent:
-        self.private_signing_key = sc.bytesToPrivateEd25519Key(
-            base64.b64decode(material.get("private_signing_key"))
+        self.sk_a = sc.bytesToPrivateEd25519Key(
+            base64.b64decode(material.get("secret_signing_key"))
         )
 
         # Load the agent's certificates
@@ -131,10 +131,10 @@ class Agent:
             base64.b64decode(material.get("agent_cert"))
         )
 
-        self.public_signing_key = self.cert.public_key()
+        self.pk_a = self.cert.public_key()
 
         # Save the key and certificate:
-        sc.save_ed25519_keys(self.workdir+"agent", self.private_signing_key, self.public_signing_key)
+        sc.save_ed25519_keys(self.workdir+"agent", self.sk_a, self.pk_a)
         sc.save_x509_certificate(self.workdir+"agent", self.cert)
 
         # Agent Identity Key Pair:
@@ -446,8 +446,8 @@ class Agent:
         # ========================================================================    
 
         # Retrieve user identity key: 
-        user_identity_key = sc.bytesToPublicEd25519Key(
-            r_agent_material.get("user_identity_key", None)
+        pk_u = sc.bytesToPublicEd25519Key(
+            r_agent_material.get("pk_u", None)
         )
     
         # Verify the agent's identity:
@@ -467,8 +467,8 @@ class Agent:
         
         r_agent_identity = {
             "aid": r_aid,
-            "public_signing_key": r_agent_public_signing_key_bytes,
-            "pik": self.PIK.public_bytes(
+            "pk_a": r_agent_public_signing_key_bytes,
+            "pk_prov": self.PK_Prov.public_bytes(
                 encoding=sc.serialization.Encoding.Raw,
                 format=sc.serialization.PublicFormat.Raw)
         }
@@ -477,7 +477,7 @@ class Agent:
 
         logger.log("CRYPTO", f"Verifying {r_aid} identity.")
         try:
-            user_identity_key.verify(
+            pk_u.verify(
                 r_public_signing_key_sig_bytes,
                 str(r_agent_identity).encode("utf-8")
             )
@@ -496,7 +496,7 @@ class Agent:
             "device": r_device, 
             "IP": r_ip, 
             "port": r_port, 
-            "pik": self.PIK.public_bytes(
+            "pk_prov": self.PK_Prov.public_bytes(
                 encoding=sc.serialization.Encoding.Raw,
                 format=sc.serialization.PublicFormat.Raw)
         }
@@ -504,7 +504,7 @@ class Agent:
 
         logger.log("CRYPTO", f"Verifying {r_aid} device information.")
         try:
-            user_identity_key.verify(
+            pk_u.verify(
                 dev_info_sig_bytes,
                 str(dev_info).encode("utf-8")
             )
@@ -673,8 +673,8 @@ class Agent:
                     
 
                         # Retrieve user identity key: 
-                        user_identity_key = sc.bytesToPublicEd25519Key(
-                            i_agent_material.get("user_identity_key", None)
+                        pk_u = sc.bytesToPublicEd25519Key(
+                            i_agent_material.get("pk_u", None)
                         )
                     
                         # Verify the agent's identity:
@@ -695,8 +695,8 @@ class Agent:
                         
                         i_agent_identity = {
                             "aid": i_aid,
-                            "public_signing_key": i_agent_public_signing_key_bytes,
-                            "pik": self.PIK.public_bytes(
+                            "pk_a": i_agent_public_signing_key_bytes,
+                            "pk_prov": self.PK_Prov.public_bytes(
                                 encoding=sc.serialization.Encoding.Raw,
                                 format=sc.serialization.PublicFormat.Raw)
                         }
@@ -704,7 +704,7 @@ class Agent:
                         i_public_signing_key_sig_bytes = i_agent_material.get("public_signing_key_sig")
                         logger.log("CRYPTO", f"Verifying {i_aid} identity.")
                         try:
-                            user_identity_key.verify(
+                            pk_u.verify(
                                 i_public_signing_key_sig_bytes,
                                 str(i_agent_identity).encode("utf-8")
                             )
@@ -723,7 +723,7 @@ class Agent:
                             "device": i_device, 
                             "IP": i_ip, 
                             "port": i_port, 
-                            "pik": self.PIK.public_bytes(
+                            "pk_prov": self.PK_Prov.public_bytes(
                                 encoding=sc.serialization.Encoding.Raw,
                                 format=sc.serialization.PublicFormat.Raw)
                         }
@@ -731,7 +731,7 @@ class Agent:
 
                         logger.log("CRYPTO", f"Verifying {i_aid} device information.")
                         try:
-                            user_identity_key.verify(
+                            pk_u.verify(
                                 dev_info_sig_bytes,
                                 str(dev_info).encode("utf-8")
                             )
@@ -757,7 +757,7 @@ class Agent:
                             i_spk_bytes = i_agent_material.get("signed_pre_key", None)
                             i_spk_sig_bytes = i_agent_material.get("signed_pre_key_sig", None)
 
-                            user_identity_key.verify(
+                            pk_u.verify(
                                 i_spk_sig_bytes,
                                 i_spk_bytes
                             )
