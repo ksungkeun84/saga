@@ -163,7 +163,7 @@ class AgentWrapper:
     def _initialize_agent(self, initiating_agent: bool) -> MultiStepAgent:
 
         if initiating_agent:
-            preamble = self.custom_prompt["preamble"]
+            preamble = self.custom_prompt["initiating_agent"]
         else:
             preamble = self.custom_prompt["receiving_agent"]
         
