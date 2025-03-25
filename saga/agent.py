@@ -367,7 +367,7 @@ class Agent:
             if i > MAX_QUERIES:
                 logger.warn("Maximum allowed number of queries in the conversation is reached. Ending conversation...")
                 return True
-            agent_instance, text = self.local_agent.run(received_message, agent_instance=agent_instance)
+            agent_instance, text = self.local_agent.run(received_message, initiating_agent=True, agent_instance=agent_instance)
             i += 1 # increment queries counter
 
     def receive_conversation(self, conn, token: str) -> bool:
@@ -414,7 +414,7 @@ class Agent:
                 return True
 
             # Get agent response:
-            agent_instance, response = self.local_agent.run(query=received_message, agent_instance=agent_instance)
+            agent_instance, response = self.local_agent.run(query=received_message, initiating_agent=False, agent_instance=agent_instance)
             i+=1 # increase query counter
             
             # Prepare response:
