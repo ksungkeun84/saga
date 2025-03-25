@@ -1,10 +1,10 @@
 from smolagents import CodeAgent, HfApiModel, TransformersModel, OpenAIServerModel, PromptTemplates, MultiStepAgent
 from agents.config import AgentConfig, UserConfig
-import importlib.resources
 import yaml
 from typing import List
 from typing import Tuple
 from smolagents import tool
+from smolagents import populate_template
 
 from tools.email import LocalEmailClientTool
 from tools.calendar import LocalCalendarTool
@@ -29,14 +29,7 @@ class AgentWrapper:
         self.task_finished_token = "<TASK_FINISHED>"
 
         # TODO: Figure out where to use description
-        TASK_FINISH_INSTR = f"\n\nWhen you determine that the task is fully completed, respond with: {self.task_finished_token}. Do not append unnecessary details before or after {self.task_finished_token}."
-        PROMPT_TO_USE: PromptTemplates = yaml.safe_load(
-            importlib.resources.files("smolagents.prompts").joinpath("code_agent.yaml").read_text()
-        )
-        PROMPT_TO_USE["system_prompt"] += TASK_FINISH_INSTR
-
-        # Store details needed to create a new agent instance
-        self.prompt_for_agent = PROMPT_TO_USE   
+        self.custom_prompt = yaml.safe_load("./code_agent_custom_prompt.yaml")
     
     def _initialize_base_model(self):
         if self.config.model_type == "TransformersModel":
@@ -167,18 +160,39 @@ class AgentWrapper:
         ]
         return tools_available
 
-    def _initialize_agent(self) -> MultiStepAgent:
+    def _initialize_agent(self, initiating_agent: bool) -> MultiStepAgent:
+
+        if initiating_agent:
+            preamble = self.custom_prompt["initiating_agent"]
+        else:
+            preamble = self.custom_prompt["receiving_agent"]
+        
+        # Fill in the template text
+        template_text = self.custom_prompt.format(preamble=preamble, task_finished_token=self.task_finished_token)
+        # Use this template text as the 
+
         agent = CodeAgent(
             tools = self.tool_collections,
             model = self.model,
             add_base_tools = True,
             additional_authorized_imports=self.config.additional_authorized_imports,
             verbosity_level=2,
-            prompt_templates=self.prompt_for_agent
+            # system_prompt=self.prompt_for_agent
         )
+
+        # Override the system template
+        agent.system_prompt = populate_template(
+            template_text,
+            variables={
+                "tools": agent.tools,
+                "managed_agents": agent.managed_agents
+                },
+        )
+
         return agent
 
     def run(self, query: str,
+            initiating_agent: bool,
             agent_instance: MultiStepAgent = None,
             **kwargs) -> Tuple[MultiStepAgent, str]:
         # We create a new instance for every fresh task, as every agent object shared memory 
@@ -187,7 +201,7 @@ class AgentWrapper:
         # Overhead for new agent creation is low enough that it is not a problem.
 
         if agent_instance is None:
-            agent_instance = self._initialize_agent()
+            agent_instance = self._initialize_agent(initiating_agent)
 
         # Make sure kwargs do not specify reset (should be False)
         if "reset" in kwargs:
