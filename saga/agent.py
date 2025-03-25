@@ -433,6 +433,7 @@ class Agent:
     def connect(self, r_aid, message: str):
 
         # Get everything you need to reach the receiving agent from the provider:
+        # TODO: Check if there exists a token for the receiving agent.
         logger.log("ACCESS", f"Requesting access to {r_aid} via the Provider.")
         r_agent_material = self.access(r_aid)
 
@@ -773,7 +774,9 @@ class Agent:
                                 logger.error("Acces control failed: no opk provided from initiating agent.")
                                 raise Exception("Acces control failed: no opk provided.")
                             # Look for the opk-sopk pair in the opks struct:
-                            sopk = self.opks_dict[i_opk_bytes] 
+                            sopk = self.opks_dict[i_opk_bytes]
+                            # TODO: Remove the used one-time pre-key to prevent replay attacks.
+                            
 
                             # Diffie hellman calculations:
                             
