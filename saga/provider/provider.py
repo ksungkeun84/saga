@@ -115,13 +115,19 @@ class Provider:
 
             # Store password hash and identity key in the database.
             hashed_pw = self.bcrypt.generate_password_hash(password).decode("utf-8")
-            pk_u = data.get("pk_u")
-            pk_u_bytes = base64.b64decode(pk_u)
+            # Get the user certificate:
+            crt_u_bytes = base64.b64decode(data.get("crt_u"))
+            crt_u = sc.bytesToX509Certificate(crt_u_bytes)
+            # Verify the user's certificate:
+            try:
+                self.CA.verify(crt_u)
+            except:
+                return jsonify({"message": "Invalid user certificate"}), 401
 
             self.users_collection.insert_one({
                 "uid": uid,
                 "password": hashed_pw,
-                "pk_u": pk_u_bytes,
+                "crt_u": crt_u_bytes,
                 "auth_tokens": []
             })
 
@@ -243,9 +249,10 @@ class Provider:
                     format=sc.serialization.PublicFormat.Raw)
             }
             dev_info_sig_bytes = base64.b64decode(application.get("dev_info_sig"))
-            # The device information block was signed by the user. We need the identity
-            # key of the user to verify the signature.
-            pk_u = sc.bytesToPublicEd25519Key(user["pk_u"])
+            # The device information block was signed by the user. We need the public
+            # signing key of the user to verify the signature.
+            crt_u = sc.bytesToX509Certificate(user["crt_u"])
+            pk_u = crt_u.public_key()
 
             try:
                 pk_u.verify(
@@ -351,6 +358,9 @@ class Provider:
 
             No one-time pre-keys are returned in the response. Only the public cryptographic
             material of the agent.
+
+            TODO: Implement contact policy enforcement. i.e., check if the agent that is being
+            looked up is allowed to contact the agent performing the lookup. 
             """
             data = request.json
             t_aid = data.get("t_aid", None)
@@ -360,8 +370,8 @@ class Provider:
             if user_metadata is None:
                 return jsonify({"message":"Cannot find agent owner."}), 404
             # Include the user's identity key in the response
-            pk_u = user_metadata.get("pk_u")
-            agent_metadata.update({"pk_u": pk_u})
+            crt_u_bytes = user_metadata.get("crt_u")
+            agent_metadata.update({"crt_u": crt_u_bytes})
             # Remove the one time pre-keys from the response
             agent_metadata.pop("one_time_pre_keys", None)
 
@@ -378,6 +388,9 @@ class Provider:
 
             The response will include the one-time pre-key and the user's identity key
             along with all other relevant cryptographic material of the receiving agent.
+            
+            TODO: Implement contact policy enforcement. i.e., check if the agent that is being
+            accessed is allowed to be contacted by the agent performing the access request.
             """
             data = request.json
             t_aid = data.get("t_aid", None)
@@ -397,8 +410,8 @@ class Provider:
                 return jsonify({"message": "Agent not found or no keys left."}), 404
 
             # Include the user's identity key in the response
-            pk_u = user_metadata.get("pk_u")
-            agent_metadata.update({"pk_u": pk_u})
+            crt_u_bytes = user_metadata.get("crt_u")
+            agent_metadata.update({"crt_u": crt_u_bytes})
             # Remove the one time pre-keys from the response
             agent_metadata['one_time_pre_keys'] = [agent_metadata['one_time_pre_keys'][0]]
 

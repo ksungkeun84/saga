@@ -32,6 +32,13 @@ PROVIDER_URL = "https://129.10.187.52:5000"
 
 ### USER ###
 USER_WORKDIR = ROOT_DIR+"/user"
+USER_DEFAULT_CONFIG = {
+    "COUNTRY_NAME": "US",
+    "STATE_NAME": "MA",
+    "LOCALITY_NAME": "Boston",
+    "ORG_NAME": "SAGA USER", 
+    "IP": "127.0.0.1"
+}
 
 ### AGENTS ###
 

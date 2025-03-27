@@ -82,7 +82,7 @@ class DummyAgent:
     def __init__(self):
         self.task_finished_token = "<TASK_FINISHED>"
 
-    def run(self, query, agent_instance=None):
+    def run(self, query, initiating_agent=None, agent_instance=None):
         time.sleep(1)
         if query == self.task_finished_token:
             return self.task_finished_token
@@ -446,10 +446,19 @@ class Agent:
         # the receiving agent.
         # ========================================================================    
 
+        # Verify user certificate:
+        r_agent_user_cert_bytes = r_agent_material.get("crt_u", None)
+        r_agent_user_cert = sc.bytesToX509Certificate(r_agent_user_cert_bytes)
+
+        logger.log("CRYPTO", f"Verifying {r_aid}'s user certificate.")
+        try:
+            self.CA.verify(r_agent_user_cert)
+        except:
+            logger.error(f"ERROR: {r_aid} USER CERTIFICATE VERIFICATION FAILED. UNSAFE CONNECTION.")
+            raise Exception(f"ERROR: {r_aid} USER CERTIFICATE VERIFICATION FAILED. UNSAFE CONNECTION.")
+
         # Retrieve user identity key: 
-        pk_u = sc.bytesToPublicEd25519Key(
-            r_agent_material.get("pk_u", None)
-        )
+        pk_u = r_agent_user_cert.public_key()
     
         # Verify the agent's identity:
         r_aid = r_agent_material.get("aid", None)
@@ -672,11 +681,19 @@ class Agent:
                             logger.error(f"{i_aid} not found.")
                             raise Exception(f"{i_aid} not found.")
                     
+                        # Verify user certificate:
+                        i_agent_user_cert_bytes = i_agent_material.get("crt_u", None)
+                        i_agent_user_cert = sc.bytesToX509Certificate(i_agent_user_cert_bytes)
+
+                        logger.log("CRYPTO", f"Verifying {i_aid}'s user certificate.")
+                        try:
+                            self.CA.verify(i_agent_user_cert)
+                        except:
+                            logger.error(f"ERROR: {i_aid} USER CERTIFICATE VERIFICATION FAILED. UNSAFE CONNECTION.")
+                            raise Exception(f"ERROR: {i_aid} USER CERTIFICATE VERIFICATION FAILED. UNSAFE CONNECTION.")
 
                         # Retrieve user identity key: 
-                        pk_u = sc.bytesToPublicEd25519Key(
-                            i_agent_material.get("pk_u", None)
-                        )
+                        pk_u = i_agent_user_cert.public_key()
                     
                         # Verify the agent's identity:
                         i_aid = i_agent_material.get("aid", None)

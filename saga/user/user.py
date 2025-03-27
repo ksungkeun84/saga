@@ -47,15 +47,22 @@ def register():
     # Generate user signing key pair:
     sk_u, pk_u = sc.generate_ed25519_keypair()
 
+    # Generate user certificate:
+    custom_user_config = saga.config.USER_DEFAULT_CONFIG.copy()
+    custom_user_config["COMMON_NAME"] = email
+    user_cert = CA.sign(
+        public_key=pk_u, # PK_U 
+        config=custom_user_config
+    )
+
     response = requests.post(f"{saga.config.PROVIDER_URL}/register", json={
         'uid': email, # uid
         'password': password, # pwd 
         # CRYPTOGRAPHIC MATERIAL TO SUBMIT TO THE PROVIDER:
-        # - PUBLIC IDENTITY KEY OF USER FOR SIGNING
-        'pk_u': base64.b64encode(pk_u.public_bytes(
-            encoding=sc.serialization.Encoding.Raw,
-            format=sc.serialization.PublicFormat.Raw
-        )).decode("utf-8")
+        # - USER CERTIFICATE
+        'crt_u': base64.b64encode(
+            user_cert.public_bytes(sc.serialization.Encoding.PEM)
+        ).decode("utf-8")
     }, verify=saga.config.CA_CERT_PATH)
     print(response.json())
     if response.status_code == 201:
@@ -70,6 +77,7 @@ def register():
         if not os.path.exists(saga.config.USER_WORKDIR+"/keys"):
             os.mkdir(saga.config.USER_WORKDIR+"/keys")
         sc.save_ed25519_keys(saga.config.USER_WORKDIR+"/keys/"+email, sk_u, pk_u)
+        sc.save_x509_certificate(saga.config.USER_WORKDIR+"/keys/"+email, user_cert)
 
 def login():
     email = input("Enter email: ")
