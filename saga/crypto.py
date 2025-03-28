@@ -368,8 +368,8 @@ def encrypt_token(token_dict, sdhkey) -> bytes:
         "issue_timestamp": token_dict["issue_timestamp"].isoformat(),
         "expiration_timestamp": token_dict["expiration_timestamp"].isoformat(),
         "communication_quota": token_dict["communication_quota"],
-        "recipient_identity_key": base64.b64encode(
-            token_dict["recipient_identity_key"].public_bytes(
+        "recipient_pac": base64.b64encode(
+            token_dict["recipient_pac"].public_bytes(
                 encoding=serialization.Encoding.Raw,
                 format=serialization.PublicFormat.Raw
             )

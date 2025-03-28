@@ -137,12 +137,12 @@ class Agent:
         sc.save_ed25519_keys(self.workdir+"agent", self.sk_a, self.pk_a)
         sc.save_x509_certificate(self.workdir+"agent", self.cert)
 
-        # Agent Identity Key Pair:
-        self.identity_key = sc.bytesToPublicX25519Key(
-            base64.b64decode(material.get("identity_key"))
+        # Agent Access Control Key Pair:
+        self.pac = sc.bytesToPublicX25519Key(
+            base64.b64decode(material.get("pac"))
         )
-        self.secret_identity_key = sc.bytesToPrivateX25519Key(
-            base64.b64decode(material.get("secret_identity_key"))
+        self.sac = sc.bytesToPrivateX25519Key(
+            base64.b64decode(material.get("sac"))
         )
         
         # Signed Pre-Keys:
@@ -204,7 +204,7 @@ class Agent:
             print(response.json())
             return None
 
-    def generate_token(self, recipient_identity_key, sdhk) -> bytes:
+    def generate_token(self, recipient_pac, sdhk) -> bytes:
         """
         Encode a token based on the shared diffie-hellman key.
         """
@@ -225,7 +225,7 @@ class Agent:
             "issue_timestamp": issue_timestamp,
             "expiration_timestamp": expiration_timestamp,
             "communication_quota": communication_quota,
-            "recipient_identity_key": recipient_identity_key
+            "recipient_pac": recipient_pac
         }
 
         # Encrypt the token using the shared DH key (SDHK)
@@ -585,12 +585,12 @@ class Agent:
                         # DH1 :
                         r_spk_bytes = r_agent_material.get("signed_pre_key", None) # TODO: VERIFY ITS SIGNATURE???
                         r_spk = sc.bytesToPublicX25519Key(r_spk_bytes)
-                        DH1 = self.secret_identity_key.exchange(r_spk)
+                        DH1 = self.sac.exchange(r_spk)
 
                         # DH2 :
-                        r_identity_key_bytes = r_agent_material.get("identity_key", None)
-                        r_identity_key = sc.bytesToPublicX25519Key(r_identity_key_bytes)
-                        DH2 = sek.exchange(r_identity_key)
+                        r_pac_bytes = r_agent_material.get("pac", None)
+                        r_pac = sc.bytesToPublicX25519Key(r_pac_bytes)
+                        DH2 = sek.exchange(r_pac)
                         
                         # DH3 :
                         DH3 = sek.exchange(r_spk)
@@ -797,13 +797,13 @@ class Agent:
 
                             # Diffie hellman calculations:
                             
-                            # DH1 = DH (IK_I, SSPK_R):
-                            i_identity_key_bytes = i_agent_material.get("identity_key", None)
-                            i_identity_key = sc.bytesToPublicX25519Key(i_identity_key_bytes)
-                            DH1 = self.sspk.exchange(i_identity_key)
+                            # DH1 = DH (PAC_I, SSPK_R):
+                            i_pac_bytes = i_agent_material.get("pac", None)
+                            i_pac = sc.bytesToPublicX25519Key(i_pac_bytes)
+                            DH1 = self.sspk.exchange(i_pac)
 
                             # DH2 :
-                            DH2 = self.secret_identity_key.exchange(i_ek)
+                            DH2 = self.sac.exchange(i_ek)
                             
                             # DH3 :
                             DH3 = self.sspk.exchange(i_ek)
@@ -825,7 +825,7 @@ class Agent:
                             logger.log("ACCESS", f"Derived SDHK: {SDHK.hex()}")
                             
                             # Generate the token:
-                            enc_token_bytes = self.generate_token(i_identity_key, SDHK)
+                            enc_token_bytes = self.generate_token(i_pac, SDHK)
                             enc_token_str = base64.b64encode(enc_token_bytes).decode('utf-8')
                             token_response = {"token": enc_token_str}
                             logger.log("ACCESS", f"Generated token: {enc_token_str}")

@@ -290,7 +290,7 @@ class Provider:
                     format=sc.serialization.PublicFormat.Raw)
             }
 
-            # Use the user's identity key for the verification of tha agent's identity.
+            # Use the user's public signing key for the verification of tha agent's identity.
             try:
                 pk_u.verify(
                     agent_identity_sig_bytes,
@@ -301,7 +301,7 @@ class Provider:
 
             # Finally, verify the agent's signed pre-key signature. The signed pre-key
             # is signed by the user and will be used for access control token generation.
-            agent_identity_key_bytes = base64.b64decode(application.get("identity_key"))
+            pac_bytes = base64.b64decode(application.get("pac"))
 
             spk_bytes = base64.b64decode(application.get("spk"))
             spk_sig_bytes = base64.b64decode(application.get("spk_sig"))
@@ -320,7 +320,7 @@ class Provider:
             # Check if any of the keys are being reused:
             if self.agents_collection.find_one({"agent_cert": agent_cert_bytes}):
                 return jsonify({"message": "Agent certificate already in use"}), 401
-            if self.agents_collection.find_one({"identity_key": agent_identity_key_bytes}):
+            if self.agents_collection.find_one({"pac": pac_bytes}):
                 return jsonify({"message": "Identity key already in use"}), 401
             if self.agents_collection.find_one({"signed_pre_key": spk_bytes}):
                 return jsonify({"message": "Signed pre-key already in use"}), 401
@@ -338,7 +338,7 @@ class Provider:
                 "IP": ip,
                 "port": port,
                 "dev_info_sig": dev_info_sig_bytes,
-                "identity_key": agent_identity_key_bytes,
+                "pac": pac_bytes,
                 "agent_cert": agent_cert_bytes,
                 "public_signing_key_sig": agent_identity_sig_bytes,
                 "signed_pre_key": spk_bytes,
@@ -369,7 +369,7 @@ class Provider:
             user_metadata = self.users_collection.find_one({"uid" : t_aid.split(":")[0]})
             if user_metadata is None:
                 return jsonify({"message":"Cannot find agent owner."}), 404
-            # Include the user's identity key in the response
+            # Include the user's public signing key in the response
             crt_u_bytes = user_metadata.get("crt_u")
             agent_metadata.update({"crt_u": crt_u_bytes})
             # Remove the one time pre-keys from the response

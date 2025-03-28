@@ -152,8 +152,8 @@ def register_agent():
     agent_identity_sig = state['keys']['signing']['secret'].sign(str(agent_identity).encode("utf-8"))
 
     # -- ACCESS CONTROL KEYS -- :
-    # Generate Agent Identity Key Pair:
-    private_identity_key, public_identity_key = sc.generate_x25519_keypair()
+    # Generate long term Access Control Key Pair:
+    sac, pac = sc.generate_x25519_keypair()
     # Generate Signed Pre-Keys:
     private_signed_prekey, public_signed_prekey = sc.generate_x25519_keypair()
     # --> Sign the public pre-key:
@@ -199,8 +199,8 @@ def register_agent():
         # and its signature = sign_{user_secret_identity_key}(aid, PK_A, PK_Prov)
         'public_signing_key_sig': base64.b64encode(agent_identity_sig).decode("utf-8"),
         
-        # Agent Identity Key (IK):
-        'identity_key': base64.b64encode(public_identity_key.public_bytes(
+        # Agent Public Access Control Key (PAC):
+        'pac': base64.b64encode(pac.public_bytes(
             encoding=sc.serialization.Encoding.Raw,
             format=sc.serialization.PublicFormat.Raw)).decode("utf-8"),
 
@@ -230,9 +230,9 @@ def register_agent():
                 'public': pk_a,
                 'secret': sk_a
             },
-            'identity_key': {
-                'public': public_identity_key,
-                'private': private_identity_key
+            'access_control': {
+                'public': pac,
+                'private': sac
             },
             'signed_prekey': {
                 'public': public_signed_prekey,
@@ -248,7 +248,7 @@ def register_agent():
                 format=sc.serialization.PrivateFormat.Raw,
                 encryption_algorithm=sc.serialization.NoEncryption()
             )).decode("utf-8"),
-            "secret_identity_key": base64.b64encode(private_identity_key.private_bytes(
+            "sac": base64.b64encode(sac.private_bytes(
                 encoding=sc.serialization.Encoding.Raw,
                 format=sc.serialization.PrivateFormat.Raw,
                 encryption_algorithm=sc.serialization.NoEncryption()
