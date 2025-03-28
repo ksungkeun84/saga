@@ -5,6 +5,9 @@ from typing import List
 from typing import Tuple
 from smolagents import tool
 from smolagents import populate_template
+import os
+
+from saga.config import ROOT_DIR
 
 from tools.email import LocalEmailClientTool
 from tools.calendar import LocalCalendarTool
@@ -28,8 +31,10 @@ class AgentWrapper:
 
         self.task_finished_token = "<TASK_FINISHED>"
 
-        # TODO: Figure out where to use description
-        self.custom_prompt = yaml.safe_load("./code_agent_custom_prompt.yaml")
+        # Read YAML file
+        DIR_ABOVE_ROOT_DIR = os.path.dirname(ROOT_DIR)
+        with open(os.path.join(DIR_ABOVE_ROOT_DIR, "agents", "prompts", "code_agent_custom_prompt.yaml"), 'r') as file:
+            self.custom_prompt = yaml.safe_load(file)
     
     def _initialize_base_model(self):
         if self.config.model_type == "TransformersModel":
@@ -168,7 +173,8 @@ class AgentWrapper:
             preamble = self.custom_prompt["receiving_agent"]
         
         # Fill in the template text
-        template_text = self.custom_prompt.format(preamble=preamble, task_finished_token=self.task_finished_token)
+        # TODO: Find a better way around this mess
+        template_text = self.custom_prompt["custom_system_prompt"].replace("[[[preamble]]]", preamble).replace("[[[task_finished_token]]]", self.task_finished_token)
         # Use this template text as the 
 
         agent = CodeAgent(
@@ -185,8 +191,13 @@ class AgentWrapper:
             template_text,
             variables={
                 "tools": agent.tools,
-                "managed_agents": agent.managed_agents
-                },
+                "managed_agents": agent.managed_agents,
+                "authorized_imports": (
+                    "You can import from any package you want."
+                    if "*" in agent.authorized_imports
+                    else str(agent.authorized_imports)
+                ),
+            },
         )
 
         return agent
