@@ -181,13 +181,13 @@ class Provider:
         def register_agent():
             """
             This endpoint is used by the user to register a new agent. The user must provide
-            the agent's cryptographic material, including the agent's identity key, public
-            signing key, signed pre-key, and one-time pre-keys. The user must also provide
+            the agent's cryptographic material, including the agent's public access control 
+            key, public signing key, and one-time keys. The user must also provide
             the agent's device information, including the device name, IP address, and port.
 
             The user must also provide the agent's certificate, signed by a CA. The user must
-            also provide the signatures of the agent's device information, public signing key,
-            and signed pre-key, signed by the user's identity key.
+            also provide the signatures of the agent's information and cryptographic material,
+            and the signatures of the one-time keys.
 
             The user MUST be authenticated to register an agent. The user must provide their
             UID and a valid JWT in the request body.
@@ -228,105 +228,92 @@ class Provider:
             if self.agents_collection.find_one({"aid": aid}):
                 return jsonify({"message": f'Agent "{aid}" already exists.'}), 401
 
-            # Verify signatures
-            device = application.get("device")
-            ip = application.get("IP")
-            port = application.get("port")
-
-            # First, verify the device information block signature.
-            # The device information block includes 
-            # - the aid, 
-            # - device name, 
-            # - IP address, port, and 
-            # - the provider's public identity key (PK_Prov). 
-            dev_info = {
-                "aid": aid, 
-                "device": device, 
-                "IP": ip, 
-                "port": port, 
-                "pk_prov": self.PK_Prov.public_bytes(
-                    encoding=sc.serialization.Encoding.Raw,
-                    format=sc.serialization.PublicFormat.Raw)
-            }
-            dev_info_sig_bytes = base64.b64decode(application.get("dev_info_sig"))
-            # The device information block was signed by the user. We need the public
-            # signing key of the user to verify the signature.
+            
+            # Get the agent's user's public signing key:
             crt_u = sc.bytesToX509Certificate(user["crt_u"])
             pk_u = crt_u.public_key()
 
-            try:
-                pk_u.verify(
-                    dev_info_sig_bytes,
-                    str(dev_info).encode("utf-8")
-                )
-            except:
-                return jsonify({"message": "Invalid device info signature"}), 401
-
-            # Next, we need to berify the agent identity block. This block includes
-            # - the agent's aid,
-            # - the agent's public signing key, and
-            # - the provider's public identity key (PK_Prov).
-            # i.e. we need to confirm that the public key of the certificate was 
-            # signed by the user. (Note: this is not self-signing. Keep in mind that
-            # the user is a different entity than the agent.)
-        
+            # Get device and network information.
+            device = application.get("device")
+            ip = application.get("IP")
+            port = application.get("port")
+            # Build the device and network information block.
+            # The block includes:
+            # - the aid, 
+            # - device name, 
+            # - IP address and port 
+            dev_network_info = {
+                "aid": aid, 
+                "device": device, 
+                "IP": ip, 
+                "port": port
+            }
             
             # Get the agent certificate:
             agent_cert_bytes = base64.b64decode(application.get("agent_cert"))
             agent_cert = sc.bytesToX509Certificate(agent_cert_bytes)
 
-            # Extract the public signing key and its signature
+            # Verify the agent's certificate:
+            try:
+                self.CA.verify(agent_cert)
+            except:
+                return jsonify({"message": "Invalid agent certificate"}), 401
+            # Extract the aagent's public signing key 
             pk_a_bytes = agent_cert.public_key().public_bytes(
                 encoding=sc.serialization.Encoding.Raw,
                 format=sc.serialization.PublicFormat.Raw
             ) 
-            agent_identity_sig_bytes = base64.b64decode(application.get("public_signing_key_sig"))
-
-            agent_identity = {
-                "aid": aid,
+            
+            # Get the agent's long term access control key:
+            pac_bytes = base64.b64decode(application.get("pac"))
+                
+            # Build the agent cryptographic information block:
+            crypto_info = {
                 "pk_a": pk_a_bytes,
+                "pac": pac_bytes,
                 "pk_prov": self.PK_Prov.public_bytes(
                     encoding=sc.serialization.Encoding.Raw,
-                    format=sc.serialization.PublicFormat.Raw)
+                    format=sc.serialization.PublicFormat.Raw
+                )
             }
 
-            # Use the user's public signing key for the verification of tha agent's identity.
+            # Verify the agent's signature using the user's public signing key:
+            block = {}
+            block.update(dev_network_info)
+            block.update(crypto_info)
+            agent_sig_bytes = base64.b64decode(application.get("agent_sig"))
             try:
                 pk_u.verify(
-                    agent_identity_sig_bytes,
-                    str(agent_identity).encode("utf-8")
+                    agent_sig_bytes,
+                    str(block).encode("utf-8")
                 )
             except:
-                return jsonify({"message": "Invalid agent identity signature"}), 401
-
-            # Finally, verify the agent's signed pre-key signature. The signed pre-key
-            # is signed by the user and will be used for access control token generation.
-            pac_bytes = base64.b64decode(application.get("pac"))
-
-            spk_bytes = base64.b64decode(application.get("spk"))
-            spk_sig_bytes = base64.b64decode(application.get("spk_sig"))
-
-            # Verify the signed pre-key signature using the user's identity key.
-            try:
-                pk_u.verify(spk_sig_bytes, spk_bytes)
-            except:
-                return jsonify({"message": "Invalid signed pre-key signature"}), 401
-
-            # Extract the one-time pre-keys. No signatures are provided for these keys.
-            opks = application.get("opks")
-            opks_bytes = [base64.b64decode(opk) for opk in opks]
-
+                return jsonify({"message": "Invalid agent signature"}), 401
+            
+            # Extract the one-time keys.
+            otks = application.get("otks")
+            otks_bytes = [base64.b64decode(otk) for otk in otks]
+            # Extract their signatures:
+            otk_sigs = application.get("otk_sigs")
+            otk_sigs_bytes = [base64.b64decode(sig) for sig in otk_sigs]
+            # Verify the signatures of the one-time keys using the user's public signing key:
+            for i, otk in enumerate(otks_bytes):
+                try:
+                    pk_u.verify(
+                        otk_sigs_bytes[i],
+                        otk
+                    )
+                except:
+                    return jsonify({"message": "Invalid one-time key signature"}), 401
             
             # Check if any of the keys are being reused:
             if self.agents_collection.find_one({"agent_cert": agent_cert_bytes}):
                 return jsonify({"message": "Agent certificate already in use"}), 401
             if self.agents_collection.find_one({"pac": pac_bytes}):
-                return jsonify({"message": "Identity key already in use"}), 401
-            if self.agents_collection.find_one({"signed_pre_key": spk_bytes}):
-                return jsonify({"message": "Signed pre-key already in use"}), 401
-            for opk in opks_bytes:
-                if self.agents_collection.find_one({"one_time_pre_keys": {"$elemMatch": {"$eq": opk}}}):
-                    return jsonify({"message": "One-time pre-key already in use"}), 401
+                return jsonify({"message": "Access control key already in use"}), 401
+            for otk in otks_bytes:
+                if self.agents_collection.find_one({"one_time_keys": {"$elemMatch": {"$eq": otk}}}):
+                    return jsonify({"message": "One-time key already in use"}), 401
 
             # ========================================================================
             # At this stage, all required checks have been completed. The provider 
@@ -337,13 +324,12 @@ class Provider:
                 "device": device,
                 "IP": ip,
                 "port": port,
-                "dev_info_sig": dev_info_sig_bytes,
-                "pac": pac_bytes,
                 "agent_cert": agent_cert_bytes,
-                "public_signing_key_sig": agent_identity_sig_bytes,
-                "signed_pre_key": spk_bytes,
-                "signed_pre_key_sig": spk_sig_bytes,
-                "one_time_pre_keys": opks_bytes
+                "pac": pac_bytes,
+                "one_time_keys": otks_bytes,
+                # Signatures:
+                "agent_sig": agent_sig_bytes,
+                "one_time_key_sigs": otk_sigs_bytes,
             })
             # Pop the JWT from the user's record so that it cannot be reused for other purposes.
             self.users_collection.update_one({"uid": uid}, {"$pull": {"auth_tokens": {"token": user_jwt}}})
@@ -356,7 +342,7 @@ class Provider:
             of another agent. In most use cases, the receiving agent uses the lookup endpoint
             to retrieve the public cryptographic material of the initiating agent. 
 
-            No one-time pre-keys are returned in the response. Only the public cryptographic
+            No one-time keys are returned in the response. Only the public cryptographic
             material of the agent.
 
             TODO: Implement contact policy enforcement. i.e., check if the agent that is being
@@ -372,25 +358,28 @@ class Provider:
             # Include the user's public signing key in the response
             crt_u_bytes = user_metadata.get("crt_u")
             agent_metadata.update({"crt_u": crt_u_bytes})
-            # Remove the one time pre-keys from the response
-            agent_metadata.pop("one_time_pre_keys", None)
+            # Remove the one time keys from the response
+            agent_metadata.pop("one_time_keys", None)
 
             return jsonify(agent_metadata), 200
     
         @self.app.route('/access', methods=['POST'])
         def access():
             """
-            This endpoint is used by the initiating agent to request a one-time pre-key
+            This endpoint is used by the initiating agent to request a one-time key
             from the provider in order to receive an access control token from the
             receiving agent.
 
             The request should include the target agent ID (t_aid) in the request body.
 
-            The response will include the one-time pre-key and the user's identity key
+            The response will include the one-time key and the user's identity key
             along with all other relevant cryptographic material of the receiving agent.
             
             TODO: Implement contact policy enforcement. i.e., check if the agent that is being
             accessed is allowed to be contacted by the agent performing the access request.
+
+            TODO: This function is inneficient and is not scalable because it is fetching ALL
+            the one time keys from the database. Only the last one should be fetched.
             """
             data = request.json
             t_aid = data.get("t_aid", None)
@@ -400,8 +389,10 @@ class Provider:
                 return jsonify({"message":"Cannot find agent owner."}), 404
 
             agent_metadata = self.agents_collection.find_one_and_update(
-                {"aid": t_aid, "one_time_pre_keys": {"$ne": []}},  # Ensure keys exist
-                {"$pop": {"one_time_pre_keys": 1}},  # Remove last element
+                {"aid": t_aid, "one_time_keys": {"$ne": []}},  # Ensure keys exist
+                {
+                    "$pop": {"one_time_keys": 1, "one_time_key_sigs": 1}  # Remove last key and signature
+                },
                 return_document=False  # Return document *before* modification
             )
 
@@ -412,8 +403,9 @@ class Provider:
             # Include the user's identity key in the response
             crt_u_bytes = user_metadata.get("crt_u")
             agent_metadata.update({"crt_u": crt_u_bytes})
-            # Remove the one time pre-keys from the response
-            agent_metadata['one_time_pre_keys'] = [agent_metadata['one_time_pre_keys'][0]]
+            # Remove the one time keys from the response
+            agent_metadata['one_time_keys'] = [agent_metadata['one_time_keys'][-1]]
+            agent_metadata['one_time_key_sigs'] = [agent_metadata['one_time_key_sigs'][-1]]
 
             return jsonify(agent_metadata), 200
     

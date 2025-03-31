@@ -118,9 +118,6 @@ class Agent:
         self.CA.verify(provider_cert) # if the verification fails an exception will be raised.
         self.PK_Prov = provider_cert.public_key()
 
-        # Device Info Signature
-        self.dev_info_sig = material.get("dev_info_sig")
-
         # TLS signing keys for the Agent:
         self.sk_a = sc.bytesToPrivateEd25519Key(
             base64.b64decode(material.get("secret_signing_key"))
@@ -145,30 +142,22 @@ class Agent:
             base64.b64decode(material.get("sac"))
         )
         
-        # Signed Pre-Keys:
-        self.spk = sc.bytesToPublicX25519Key(
-            base64.b64decode(material.get("spk"))
-        )
-        self.spk_sig = base64.b64decode(material.get("spk_sig"))
-        self.sspk = sc.bytesToPrivateX25519Key(
-            base64.b64decode(material.get("sspk"))
-        )
 
-        # One-Time Pre-Keys:
-        self.sopks = [sc.bytesToPrivateX25519Key(
-            base64.b64decode(sopk)
-        ) for sopk in material.get("sopks")]
-        self.opks = [sc.bytesToPublicX25519Key(
-            base64.b64decode(opk)
-        ) for opk in material.get("opks")]
+        # One-Time Keys:
+        self.sotks = [sc.bytesToPrivateX25519Key(
+            base64.b64decode(sotk)
+        ) for sotk in material.get("sotks")]
+        self.otks = [sc.bytesToPublicX25519Key(
+            base64.b64decode(otk)
+        ) for otk in material.get("otks")]
 
-        # Join the One-time Pre-keys:
-        self.opks_dict = {}
-        for i in range(len(self.opks)):
-            self.opks_dict[self.opks[i].public_bytes(
+        # Join the One-time keys:
+        self.otks_dict = {}
+        for i in range(len(self.otks)):
+            self.otks_dict[self.otks[i].public_bytes(
                 encoding=sc.serialization.Encoding.Raw,
                 format=sc.serialization.PublicFormat.Raw
-            )] = self.sopks[i] 
+            )] = self.sotks[i] 
 
         # Init token storing dicts:
         self.active_tokens = {} # Active tokens that were given to initiating agents from the agent.
@@ -467,59 +456,49 @@ class Agent:
             r_agent_cert_bytes 
         )
         if r_agent_cert is None:
-            print("No valid certificate found.")
-            return
-        r_agent_public_signing_key = r_agent_cert.public_key()
-        r_agent_public_signing_key_bytes = r_agent_public_signing_key.public_bytes(
+            logger.error("No valid certificate found.")
+            raise Exception("No valid certificate found.")
+        r_agent_pk = r_agent_cert.public_key()
+        r_agent_pk_bytes = r_agent_pk.public_bytes(
             encoding=sc.serialization.Encoding.Raw,
             format=sc.serialization.PublicFormat.Raw
-        )
-        
-        r_agent_identity = {
-            "aid": r_aid,
-            "pk_a": r_agent_public_signing_key_bytes,
-            "pk_prov": self.PK_Prov.public_bytes(
-                encoding=sc.serialization.Encoding.Raw,
-                format=sc.serialization.PublicFormat.Raw)
-        }
-
-        r_public_signing_key_sig_bytes = r_agent_material.get("public_signing_key_sig")
-
-        logger.log("CRYPTO", f"Verifying {r_aid} identity.")
-        try:
-            pk_u.verify(
-                r_public_signing_key_sig_bytes,
-                str(r_agent_identity).encode("utf-8")
-            )
-        except:
-            logger.error(f"{r_aid} IDENTITY VERIFICATION FAILED. UNSAFE CONNECTION.")
-            return
-        
+        )        
 
         # Verify the target agent's device information:
         r_device = r_agent_material.get("device")
         r_ip = r_agent_material.get("IP")
         r_port = r_agent_material.get("port")
 
-        dev_info = {
+        dev_network_info = {
             "aid": r_aid, 
             "device": r_device, 
             "IP": r_ip, 
-            "port": r_port, 
+            "port": r_port
+        }
+
+        r_agent_pac_bytes = r_agent_material.get("pac", None)
+
+        crypto_info = {
+            "pk_a": r_agent_pk_bytes,
+            "pac": r_agent_pac_bytes,
             "pk_prov": self.PK_Prov.public_bytes(
                 encoding=sc.serialization.Encoding.Raw,
-                format=sc.serialization.PublicFormat.Raw)
+                format=sc.serialization.PublicFormat.Raw
+            )
         }
-        dev_info_sig_bytes = r_agent_material.get("dev_info_sig")
 
-        logger.log("CRYPTO", f"Verifying {r_aid} device information.")
+        block = {}
+        block.update(dev_network_info)
+        block.update(crypto_info)
+        r_agent_sig_bytes = r_agent_material.get("agent_sig")
+        logger.log("CRYPTO", f"Verifying {r_aid}'s signature.")
         try:
             pk_u.verify(
-                dev_info_sig_bytes,
-                str(dev_info).encode("utf-8")
+                r_agent_sig_bytes,
+                str(block).encode("utf-8")
             )
         except:
-            logger.error(f"{r_aid} DEVICE VERIFICATION FAILED. UNSAFE CONNECTION.")
+            logger.error(f"ERROR: {r_aid} SIGNATURE VERIFICATION FAILED. MATERIAL INTEGRITY PERHAPS COMPROMISED. UNSAFE CONNECTION.")
             return
 
         # ========================================================================
@@ -552,19 +531,23 @@ class Agent:
                     if token is None:
                         # If no token is found, the initiating agent must 
                         # receive a new one from the receiving agent.
-                        # == X3DH protocol is used for token generation ==
                         logger.log("ACCESS", f"No valid received token found for {r_aid}. Will request new one.")
-                        # Generate ephemeral keys:
-                        sek, ek = sc.generate_x25519_keypair()
-                        # and use one of the receiving agent's one-time pre-keys:
-                        r_opk = r_agent_material.get("one_time_pre_keys", None)[0]
+                        # Use of the receiving agent's one-time keys:
+                        r_otk = r_agent_material.get("one_time_keys", None)[0]
+                        r_otk_sig_bytes = r_agent_material.get("one_time_key_sigs", None)[0]
+                        
+                        # Verify the one-time key:
+                        try:
+                            pk_u.verify(
+                                r_otk_sig_bytes,
+                                r_otk
+                            )
+                        except:
+                            logger.error(f"ERROR: {r_aid} ONE TIME KEY VERIFICATION FAILED. UNSAFE CONNECTION.")
+                            raise Exception(f"ERROR: {r_aid} ONE TIME KEY VERIFICATION FAILED. UNSAFE CONNECTION.")
 
                         # Prepare JSON message
-                        request_dict['ek'] = base64.b64encode(ek.public_bytes(
-                            encoding=sc.serialization.Encoding.Raw,
-                            format=sc.serialization.PublicFormat.Raw
-                        )).decode("utf-8")
-                        request_dict['opk'] = base64.b64encode(r_opk).decode("utf-8")
+                        request_dict['otk'] = base64.b64encode(r_otk).decode("utf-8")
                     else:
                         # If a token is found, the initiating agent can send 
                         # it to the receiving agent.                        
@@ -582,25 +565,10 @@ class Agent:
                         response_dict = json.loads(response.decode('utf-8'))
                         
                         # Diffie hellman calculations:
-                        # DH1 :
-                        r_spk_bytes = r_agent_material.get("signed_pre_key", None) # TODO: VERIFY ITS SIGNATURE???
-                        r_spk = sc.bytesToPublicX25519Key(r_spk_bytes)
-                        DH1 = self.sac.exchange(r_spk)
+                        r_otk = sc.bytesToPublicX25519Key(r_otk)
+                        DH = self.sac.exchange(r_otk)
 
-                        # DH2 :
-                        r_pac_bytes = r_agent_material.get("pac", None)
-                        r_pac = sc.bytesToPublicX25519Key(r_pac_bytes)
-                        DH2 = sek.exchange(r_pac)
-                        
-                        # DH3 :
-                        DH3 = sek.exchange(r_spk)
-
-                        # DH4 :
-                        r_opk = sc.bytesToPublicX25519Key(r_opk)
-                        DH4 = sek.exchange(r_opk)
-
-                        # CONCAT shared secrets
-                        shared_secrets = [DH1, DH2, DH3, DH4]
+                        shared_secrets = [DH]
                         concat_secret = b''.join(shared_secrets)
 
                         SDHK = sc.HKDF(
@@ -636,8 +604,6 @@ class Agent:
                             else:
                                 logger.error("Token rejected from receiving side.")
                                 
-                    
-
         except ssl.SSLError as e:
             print(f"SSL Error: {e}")
 
@@ -704,58 +670,48 @@ class Agent:
                         if i_agent_cert is None:
                             logger.error("No valid certificate found.")
                             raise Exception("No valid certificate found.")
-                            
-                        i_agent_public_signing_key = i_agent_cert.public_key()
-                        i_agent_public_signing_key_bytes = i_agent_public_signing_key.public_bytes(
+                        
+                        i_agent_pk = i_agent_cert.public_key()
+                        i_agent_pk_bytes = i_agent_pk.public_bytes(
                             encoding=sc.serialization.Encoding.Raw,
                             format=sc.serialization.PublicFormat.Raw
                         )
-                        
-                        i_agent_identity = {
-                            "aid": i_aid,
-                            "pk_a": i_agent_public_signing_key_bytes,
-                            "pk_prov": self.PK_Prov.public_bytes(
-                                encoding=sc.serialization.Encoding.Raw,
-                                format=sc.serialization.PublicFormat.Raw)
-                        }
-
-                        i_public_signing_key_sig_bytes = i_agent_material.get("public_signing_key_sig")
-                        logger.log("CRYPTO", f"Verifying {i_aid} identity.")
-                        try:
-                            pk_u.verify(
-                                i_public_signing_key_sig_bytes,
-                                str(i_agent_identity).encode("utf-8")
-                            )
-                        except:
-                            logger.error(f"ERROR: {i_aid} IDENTITY VERIFICATION FAILED. UNSAFE CONNECTION.")
-                            raise Exception(f"ERROR: {i_aid} IDENTITY VERIFICATION FAILED. UNSAFE CONNECTION.")
-                        
-
-                        # Verify the target agent's device information:
+                    
                         i_device = i_agent_material.get("device")
                         i_ip = i_agent_material.get("IP")
                         i_port = i_agent_material.get("port")
-
-                        dev_info = {
+                        dev_network_info = {
                             "aid": i_aid, 
                             "device": i_device, 
                             "IP": i_ip, 
-                            "port": i_port, 
+                            "port": i_port
+                        }
+
+                        i_agent_pac_bytes = i_agent_material.get("pac", None)
+                        i_pac = sc.bytesToPublicX25519Key(i_agent_pac_bytes)
+                        crypto_info = {
+                            "pk_a": i_agent_pk_bytes,
+                            "pac": i_agent_pac_bytes,
                             "pk_prov": self.PK_Prov.public_bytes(
                                 encoding=sc.serialization.Encoding.Raw,
-                                format=sc.serialization.PublicFormat.Raw)
+                                format=sc.serialization.PublicFormat.Raw
+                            )
                         }
-                        dev_info_sig_bytes = i_agent_material.get("dev_info_sig")
 
-                        logger.log("CRYPTO", f"Verifying {i_aid} device information.")
+
+                        block = {}
+                        block.update(dev_network_info)
+                        block.update(crypto_info)
+                        r_agent_sig_bytes = i_agent_material.get("agent_sig")
+                        logger.log("CRYPTO", f"Verifying {i_aid}'s signature.")
                         try:
                             pk_u.verify(
-                                dev_info_sig_bytes,
-                                str(dev_info).encode("utf-8")
+                                r_agent_sig_bytes,
+                                str(block).encode("utf-8")
                             )
                         except:
-                            logger.error(f"ERROR: {i_aid} DEVICE VERIFICATION FAILED. UNSAFE CONNECTION.")
-                            raise Exception(f"ERROR: {i_aid} DEVICE VERIFICATION FAILED. UNSAFE CONNECTION.")
+                            logger.error(f"ERROR: {i_aid} SIGNATURE VERIFICATION FAILED. MATERIAL INTEGRITY PERHAPS COMPROMISED. UNSAFE CONNECTION.")
+                            raise Exception(f"ERROR: {i_aid} SIGNATURE VERIFICATION FAILED. MATERIAL INTEGRITY PERHAPS COMPROMISED. UNSAFE CONNECTION.")
 
                         # ========================================================================
                         # If no signature verification fails, that means that the receiving agent's 
@@ -771,48 +727,19 @@ class Agent:
                             # The initiating agent does not have a token. 
                             logger.log("ACCESS", f"No valid received token found. For {i_aid}. Generating new one.")
                             
-                            # Verify the agent's SPK:
-                            i_spk_bytes = i_agent_material.get("signed_pre_key", None)
-                            i_spk_sig_bytes = i_agent_material.get("signed_pre_key_sig", None)
-
-                            pk_u.verify(
-                                i_spk_sig_bytes,
-                                i_spk_bytes
-                            )
-                            
-
-                            # The agent must have an EK (ek):
-                            i_ek_bytes = base64.b64decode(received_msg.get("ek"))
-                            i_ek = sc.bytesToPublicX25519Key(i_ek_bytes)
-                            
-                            # The agent must have a opk: 
-                            i_opk_bytes = base64.b64decode(received_msg.get("opk", None))
-                            if i_opk_bytes is None:
-                                logger.error("Acces control failed: no opk provided from initiating agent.")
-                                raise Exception("Acces control failed: no opk provided.")
-                            # Look for the opk-sopk pair in the opks struct:
-                            sopk = self.opks_dict[i_opk_bytes]
-                            # TODO: Remove the used one-time pre-key to prevent replay attacks.
-                            
+                            # The agent must have a otk: 
+                            i_otk_bytes = base64.b64decode(received_msg.get("otk", None))
+                            if i_otk_bytes is None:
+                                logger.error("Acces control failed: no otk provided from initiating agent.")
+                                raise Exception("Acces control failed: no otk provided.")
+                            # Look for the otk-sotk pair in the otks struct:
+                            sotk = self.otks_dict[i_otk_bytes]
+                            # TODO: Remove the used one-time key to prevent replay attacks.
 
                             # Diffie hellman calculations:
+                            DH = sotk.exchange(i_pac)
                             
-                            # DH1 = DH (PAC_I, SSPK_R):
-                            i_pac_bytes = i_agent_material.get("pac", None)
-                            i_pac = sc.bytesToPublicX25519Key(i_pac_bytes)
-                            DH1 = self.sspk.exchange(i_pac)
-
-                            # DH2 :
-                            DH2 = self.sac.exchange(i_ek)
-                            
-                            # DH3 :
-                            DH3 = self.sspk.exchange(i_ek)
-
-                            # DH4 :
-                            DH4 = sopk.exchange(i_ek)
-                            
-                            # CONCAT shared secrets
-                            shared_secrets = [DH1, DH2, DH3, DH4]
+                            shared_secrets = [DH]
                             concat_secret = b''.join(shared_secrets)
 
                             SDHK = sc.HKDF(

@@ -110,22 +110,18 @@ def register_agent():
     device = input("Enter device name: ")
     IP = input("Enter IP address: ")
     port = input("Enter port: ")
-    num_one_time_pre = int(input("Enter number of one-time prekeys: "))
+    num_one_time_keys = int(input("Enter number of one-time access keys: "))
 
     # Assign the aid:
     aid = state['uid'] + ":" + name
 
     # Generate the device info:
-    dev_info = {
+    dev_network_info = {
         "aid":aid, 
         "device":device, 
         "IP":IP, 
-        "port":port, 
-        "pk_prov": PK_Prov.public_bytes(
-            encoding=sc.serialization.Encoding.Raw,
-            format=sc.serialization.PublicFormat.Raw)
+        "port":port
     }
-    dev_info_sig = state['keys']['signing']['secret'].sign(str(dev_info).encode("utf-8"))
 
     # Generate TLS signing keys for the Agent:
     sk_a, pk_a = sc.generate_ed25519_keypair() # SK_A, PK_A
@@ -139,45 +135,55 @@ def register_agent():
         config=custom_agent_config
     )
 
-
-    agent_identity = {
-        "aid":aid,
+    # -- ACCESS CONTROL KEYS -- :
+    # Generate long term Access Control Key Pair:
+    sac, pac = sc.generate_x25519_keypair()
+    crypto_info = {
         "pk_a":pk_a.public_bytes(
+            encoding=sc.serialization.Encoding.Raw,
+            format=sc.serialization.PublicFormat.Raw),
+        "pac":pac.public_bytes(
             encoding=sc.serialization.Encoding.Raw,
             format=sc.serialization.PublicFormat.Raw),
         "pk_prov": PK_Prov.public_bytes(
             encoding=sc.serialization.Encoding.Raw,
             format=sc.serialization.PublicFormat.Raw)
     }
-    agent_identity_sig = state['keys']['signing']['secret'].sign(str(agent_identity).encode("utf-8"))
 
-    # -- ACCESS CONTROL KEYS -- :
-    # Generate long term Access Control Key Pair:
-    sac, pac = sc.generate_x25519_keypair()
-    # Generate Signed Pre-Keys:
-    private_signed_prekey, public_signed_prekey = sc.generate_x25519_keypair()
-    # --> Sign the public pre-key:
-    spk_sig = state['keys']['signing']['secret'].sign(public_signed_prekey.public_bytes(
+    # Generate One-Time Keys:
+    private_one_time_keys = []
+    public_one_time_keys = []
+    for _ in range(num_one_time_keys):
+        private_one_time_key, public_one_time_key = sc.generate_x25519_keypair()
+        private_one_time_keys.append(private_one_time_key)
+        public_one_time_keys.append(public_one_time_key)
+
+    public_one_time_keys_2_b64 = [base64.b64encode(key.public_bytes(
         encoding=sc.serialization.Encoding.Raw,
-        format=sc.serialization.PublicFormat.Raw)
-    )
-    # Generate One-Time Pre-Keys:
-    private_one_time_prekeys = []
-    public_one_time_prekeys = []
-    for _ in range(num_one_time_pre):
-        private_one_time_prekey, public_one_time_prekey = sc.generate_x25519_keypair()
-        private_one_time_prekeys.append(private_one_time_prekey)
-        public_one_time_prekeys.append(public_one_time_prekey)
+        format=sc.serialization.PublicFormat.Raw)).decode("utf-8") for key in public_one_time_keys]
 
-    public_one_time_prekeys_2_b64 = [base64.b64encode(key.public_bytes(
-        encoding=sc.serialization.Encoding.Raw,
-        format=sc.serialization.PublicFormat.Raw)).decode("utf-8") for key in public_one_time_prekeys]
-
-    private_one_time_prekeys_2_b64 = [base64.b64encode(key.private_bytes(
+    private_one_time_keys_2_b64 = [base64.b64encode(key.private_bytes(
         encoding=sc.serialization.Encoding.Raw,
         format=sc.serialization.PrivateFormat.Raw,
-        encryption_algorithm=sc.serialization.NoEncryption())).decode("utf-8") for key in private_one_time_prekeys]
+        encryption_algorithm=sc.serialization.NoEncryption())).decode("utf-8") for key in private_one_time_keys]
 
+    # -- SIGNATURE GENERATIONS -- :
+    # Generate the agent signature:
+    block = {}
+    block.update(dev_network_info)
+    block.update(crypto_info)
+    agent_sig = state['keys']['signing']['secret'].sign(str(block).encode("utf-8"))
+
+    # Generate the signature of every OTK with the user's secret signing key:
+    otk_sigs_2_b64 = []
+    for key in public_one_time_keys:
+        sig = state['keys']['signing']['secret'].sign(
+            key.public_bytes(
+                encoding=sc.serialization.Encoding.Raw,
+                format=sc.serialization.PublicFormat.Raw
+            )
+        )
+        otk_sigs_2_b64.append(base64.b64encode(sig).decode("utf-8"))
 
 
     # Collect all the required material for the agent registration application:
@@ -190,29 +196,20 @@ def register_agent():
         'IP': IP,
         # The host device port
         'port': port,
-        # The signature of the device info (aid, device, IP, port, PK_Prov)
-        'dev_info_sig': base64.b64encode(dev_info_sig).decode("utf-8"),
         # The agent certificate containing the agent's public signing key
         'agent_cert': base64.b64encode(
             agent_cert.public_bytes(sc.serialization.Encoding.PEM)
         ).decode("utf-8"),
-        # and its signature = sign_{user_secret_identity_key}(aid, PK_A, PK_Prov)
-        'public_signing_key_sig': base64.b64encode(agent_identity_sig).decode("utf-8"),
-        
-        # Agent Public Access Control Key (PAC):
+        # Public Access Control Key (PAC):
         'pac': base64.b64encode(pac.public_bytes(
             encoding=sc.serialization.Encoding.Raw,
             format=sc.serialization.PublicFormat.Raw)).decode("utf-8"),
-
-        # Access Control Keys:
-        # The public signed prekey of the agent
-        'spk': base64.b64encode(public_signed_prekey.public_bytes(
-            encoding=sc.serialization.Encoding.Raw,
-            format=sc.serialization.PublicFormat.Raw)).decode("utf-8"),
-        # and its signature
-        'spk_sig': base64.b64encode(spk_sig).decode("utf-8"),
-        # batch of public one-time prekeys
-        'opks': public_one_time_prekeys_2_b64
+        # batch of public one-time keys
+        'otks': public_one_time_keys_2_b64,
+        # SIGNATURES:
+        'agent_sig': base64.b64encode(agent_sig).decode("utf-8"), # Agent signature
+        # and their corresponding signatures
+        'otk_sigs': otk_sigs_2_b64, 
     }
 
     response = requests.post(f"{saga.config.PROVIDER_URL}/register_agent", json={
@@ -234,11 +231,7 @@ def register_agent():
                 'public': pac,
                 'private': sac
             },
-            'signed_prekey': {
-                'public': public_signed_prekey,
-                'private': private_signed_prekey
-            },
-            'one_time_prekeys': [list(zip(private_one_time_prekeys, public_one_time_prekeys))],
+            'one_time_keys': [list(zip(private_one_time_keys, public_one_time_keys))],
         }
         # Spawn Agent with the given material:
         
@@ -253,12 +246,7 @@ def register_agent():
                 format=sc.serialization.PrivateFormat.Raw,
                 encryption_algorithm=sc.serialization.NoEncryption()
             )).decode("utf-8"),
-            "sspk": base64.b64encode(private_signed_prekey.private_bytes(
-                encoding=sc.serialization.Encoding.Raw,
-                format=sc.serialization.PrivateFormat.Raw,
-                encryption_algorithm=sc.serialization.NoEncryption()
-            )).decode("utf-8"),
-            "sopks": private_one_time_prekeys_2_b64
+            "sotks": private_one_time_keys_2_b64
         })
         spawn_agent(application)
     else:
