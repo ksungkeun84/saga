@@ -152,6 +152,7 @@ class Agent:
         ) for otk in material.get("otks")]
 
         # Join the One-time keys:
+        self.otks_lock = threading.Lock()
         self.otks_dict = {}
         for i in range(len(self.otks)):
             self.otks_dict[self.otks[i].public_bytes(
@@ -732,9 +733,12 @@ class Agent:
                             if i_otk_bytes is None:
                                 logger.error("Acces control failed: no otk provided from initiating agent.")
                                 raise Exception("Acces control failed: no otk provided.")
-                            # Look for the otk-sotk pair in the otks struct:
-                            sotk = self.otks_dict[i_otk_bytes]
-                            # TODO: Remove the used one-time key to prevent replay attacks.
+                            
+                            with self.otks_lock:
+                                # Look for the otk-sotk pair in the otks struct:
+                                sotk = self.otks_dict[i_otk_bytes]
+                                # Remove the used one-time key to prevent replay attacks.
+                                del self.otks_dict[i_otk_bytes]
 
                             # Diffie hellman calculations:
                             DH = sotk.exchange(i_pac)
