@@ -1,15 +1,32 @@
-from pymongo import MongoClient
-from datetime import datetime
+from typing import List
+from saga.config import MONGO_URI_FOR_TOOLS
 
-MONGO_URI = "mongodb://localhost:27017/saga_tools"
 
 class BaseTool:
     def __init__(self, tool_name):
         self.tool_name = tool_name
-        self.mongo_uri = MONGO_URI
+        self.mongo_uri = MONGO_URI_FOR_TOOLS
 
         # Make sure relevant mongoDB will be available and created
         # db = self.client.get_database(self.tool_name)
         # collection = db.get_collection(self.username + "_inbox")
 
-        
+    def _get_name_from_field(self, text: str) -> str:
+        """
+            Field will be in the format "name <email>"
+            We want to extract the email address from this field
+        """
+        return text.split("<")[1].split(">")[0]
+
+    def _get_email_from_field(self, text: str) -> str:
+        """
+            Field will be in the format "name <email>"
+            We want to extract the name from this field
+        """
+        return text.split("<")[0].strip()
+
+    def seed_data(self, data: List[dict]):
+        """
+            Child class should implement a method to seed tool with specified data
+        """
+        raise NotImplementedError("Child class should implement a method to seed tool with specified data")

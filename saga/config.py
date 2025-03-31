@@ -1,5 +1,8 @@
 ### SAGA ###
 
+# MondoDB connection string (for tool-related data)
+MONGO_URI_FOR_TOOLS = "mongodb://localhost:27017/saga_tools"
+
 ROOT_DIR = "/home/georgios/saga/saga"
 
 ### CA ### (Runs on nds2 starscream)

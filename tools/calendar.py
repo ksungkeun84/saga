@@ -6,10 +6,27 @@ from tools.base import BaseTool
 
 
 class LocalCalendarTool(BaseTool):
-    def __init__(self, user_email: str):
+    def __init__(self, user_name: str, user_email: str):
         super().__init__("calendar")
         self.client = MongoClient(self.mongo_uri)
+        self.user_name = user_name
         self.user_email = user_email
+    
+    def seed_data(self, data: List[dict]):
+        db = self.client.get_database(self.tool_name)
+        collection_self = db.get_collection(self.user_email)
+
+        for event in data: 
+            # Insert into self sent collection
+            collection_self.insert_one(event)
+
+            # format is "name <email>" - we want email out of it
+            participants = event["participants"]
+            for participant in participants:
+                participant_email = self._get_email_from_field(participant)
+                collection_participant = db.get_collection(participant_email)
+                # Insert into recipient inbox collection
+                collection_participant.insert_one(event)
     
     def get_upcoming_events(self, limit: int = 10):
         """
@@ -52,6 +69,10 @@ class LocalCalendarTool(BaseTool):
             time_to = datetime.fromisoformat(time_to)
         except ValueError:
             print("Invalid date format for time_to")
+        
+        # Make sure user is in participants
+        if f"{self.user_name} <{self.user_email}>" not in participants:
+            participants.append(f"{self.user_name} <{self.user_email}>")
 
         event = {
             "time_from": time_from,
@@ -60,6 +81,12 @@ class LocalCalendarTool(BaseTool):
             "participants": participants,
             "details": details,
         }
+
+        # Now add it to the calendar of all participants
+        for participant in participants:
+            participant_email = self._get_email_from_field(participant)
+            collection = db.get_collection(participant_email)
+            collection.insert_one(event)
 
         # Insert into self sent collection
         collection.insert_one(event)
