@@ -167,6 +167,9 @@ class Agent:
         self.received_tokens = {} # Tokens that were received from the receiving agents.
         self.received_tokens_lock = threading.Lock()
 
+        # Previously contacted agents:
+        self.previously_contacted_agents = {}
+
         # Print:
         if DEBUG:
             for key, value in self.__dict__.items():
@@ -424,8 +427,19 @@ class Agent:
 
         # Get everything you need to reach the receiving agent from the provider:
         # TODO: Check if there exists a token for the receiving agent.
-        logger.log("ACCESS", f"Requesting access to {r_aid} via the Provider.")
-        r_agent_material = self.access(r_aid)
+
+        # Check if you have a token:
+        logger.log("ACCESS", f"Checking if a token exists for {r_aid}.")
+        token = self.retrieve_valid_token(r_aid)
+        if token is not None:
+            # Fetch agent information from memory:
+            logger.log("ACCESS", f"Found token for {r_aid}. Will use it.")
+            r_agent_material = self.previously_contacted_agents.get(r_aid, None)
+        else:
+            # Fetch agent information from the provider:
+            logger.log("ACCESS", f"No valid token found for {r_aid}.")
+            logger.log("ACCESS", f"Requesting access to {r_aid} via the Provider.")
+            r_agent_material = self.access(r_aid)
 
         if r_agent_material is None:
             logger.log("ACCESS", f"Access to {r_aid} denied.")
@@ -508,6 +522,9 @@ class Agent:
         # to the receiving agent.
         # ========================================================================
         
+        # Save/Update agent material in memory now that it is verified:
+        self.previously_contacted_agents[r_aid] = r_agent_material
+
         # Create SSL context for the client
         context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
         context.options |= ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1 | ssl.OP_NO_TLSv1_2  # TLS 1.3 only
@@ -527,12 +544,11 @@ class Agent:
                     request_dict = {}
                     request_dict['aid'] = self.aid # The initiating agent's ID
 
-                    # Check if you have a token:
-                    token = self.retrieve_valid_token(r_aid)
+                    # If there is no active token for contacting r_aid:
                     if token is None:
                         # If no token is found, the initiating agent must 
                         # receive a new one from the receiving agent.
-                        logger.log("ACCESS", f"No valid received token found for {r_aid}. Will request new one.")
+                        logger.log("ACCESS", f"Requesting new token from {r_aid}.")
                         # Use of the receiving agent's one-time keys:
                         r_otk = r_agent_material.get("one_time_keys", None)[0]
                         r_otk_sig_bytes = r_agent_material.get("one_time_key_sigs", None)[0]
