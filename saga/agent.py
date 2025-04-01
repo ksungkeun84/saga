@@ -160,6 +160,9 @@ class Agent:
                 format=sc.serialization.PublicFormat.Raw
             )] = self.sotks[i] 
 
+        # Agent Contact Policy Rulebook:
+        self.contact_rulebook = material.get("contact_rulebook", None)
+
         # Init token storing dicts:
         self.active_tokens = {} # Active tokens that were given to initiating agents from the agent.
         self.active_tokens_lock = threading.Lock()
@@ -713,7 +716,6 @@ class Agent:
                         pk_u = i_agent_user_cert.public_key()
                     
                         # Verify the agent's identity:
-                        i_aid = i_agent_material.get("aid", None)
                         i_agent_cert_bytes = i_agent_material.get("agent_cert", None)
                         i_agent_cert = sc.bytesToX509Certificate(
                             i_agent_cert_bytes 
