@@ -1,7 +1,7 @@
 ### SAGA ###
 
 # MondoDB connection string (for tool-related data)
-MONGO_URI_FOR_TOOLS = "mongodb://localhost:27017/saga_tools"
+MONGO_URI_FOR_TOOLS = "mongodb://129.10.187.52:27017/saga_tools"
 
 ROOT_DIR = "/home/georgios/saga/saga"
 

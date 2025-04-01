@@ -1,5 +1,5 @@
 from smolagents import CodeAgent, HfApiModel, TransformersModel, OpenAIServerModel, PromptTemplates, MultiStepAgent
-from agents.config import AgentConfig, UserConfig
+from agent_backend.config import AgentConfig, UserConfig
 import yaml
 from typing import List
 from typing import Tuple
@@ -9,8 +9,8 @@ import os
 
 from saga.config import ROOT_DIR
 
-from tools.email import LocalEmailClientTool
-from tools.calendar import LocalCalendarTool
+from agent_backend.tools.email import LocalEmailClientTool
+from agent_backend.tools.calendar import LocalCalendarTool
 
 
 class AgentWrapper:
@@ -33,7 +33,7 @@ class AgentWrapper:
 
         # Read YAML file
         DIR_ABOVE_ROOT_DIR = os.path.dirname(ROOT_DIR)
-        with open(os.path.join(DIR_ABOVE_ROOT_DIR, "agents", "prompts", "code_agent_custom_prompt.yaml"), 'r') as file:
+        with open(os.path.join(DIR_ABOVE_ROOT_DIR, "agent_backend", "prompts", "code_agent_custom_prompt.yaml"), 'r') as file:
             self.custom_prompt = yaml.safe_load(file)
     
     def _initialize_base_model(self):
@@ -77,7 +77,8 @@ class AgentWrapper:
 
     def _email_tools(self):
         # Define relevant tools for email use
-        self.email_client = LocalEmailClientTool(self.user_config.email)
+        self.email_client = LocalEmailClientTool(user_name=self.user_config.name,
+                                                 user_email=self.user_config.email)
 
         @tool
         def check_inbox(limit: int = 10) -> List[dict]:
@@ -124,7 +125,8 @@ class AgentWrapper:
 
     def _calendar_tools(self):
         # Define relevant tools for email use
-        self.calendar_client = LocalCalendarTool(self.user_config.email)
+        self.calendar_client = LocalCalendarTool(user_name=self.user_config.name,
+                                                 user_email=self.user_config.email)
 
         @tool
         def get_upcoming_events(limit: int = 10) -> List[dict]:

@@ -2,7 +2,7 @@ from pymongo import MongoClient
 from datetime import datetime
 from typing import List
 
-from tools.base import BaseTool
+from agent_backend.tools.base import BaseTool
 
 
 class LocalEmailClientTool(BaseTool):

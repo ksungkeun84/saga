@@ -1,12 +1,13 @@
 """
     Add some seed data into the running user's agent.
+    Delete any existing data in storage before refreshing data
 """
 import os
 import json
-from agents.config import UserConfig
+from agent_backend.config import UserConfig
 
-from tools.calendar import LocalCalendarTool
-from tools.email import LocalEmailClientTool
+from agent_backend.tools.calendar import LocalCalendarTool
+from agent_backend.tools.email import LocalEmailClientTool
 from saga.config import ROOT_DIR
 
 
@@ -19,7 +20,7 @@ def read_jsonl_data(path):
 
 
 def main(user_configs_path):
-    PATH_WITH_SEED_DATA = os.path.join(os.path.dirname(ROOT_DIR), "data")
+    PATH_WITH_SEED_DATA = os.path.join(os.path.dirname(ROOT_DIR), "experiments", "data")
     for fpath in os.listdir(user_configs_path):
         config_path = os.path.join(user_configs_path, fpath)
         # Read user config
@@ -41,9 +42,15 @@ def main(user_configs_path):
             else:
                 raise NotImplementedError(f"Tool {tool} not implemented yet.")
             
+            # Clear out existing data
+            tool_obj._clear_data()
+
             # Read relevant data from data/
-            tool_obj.seed_data(read_jsonl_data(os.path.join(PATH_WITH_SEED_DATA, fpath.split(".yaml")[0], f"{tool}.jsonl")))
+            jsonl_data = read_jsonl_data(os.path.join(PATH_WITH_SEED_DATA, fpath.split(".yaml")[0], f"{tool}.jsonl"))
+            tool_obj.seed_data(jsonl_data)
+    
+    print("Cleared all users' tool-related data and seeded with provided data!")
 
 
 if __name__ == "__main__":
-    main("user_configs")
+    main("../user_configs")

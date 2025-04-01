@@ -1,4 +1,5 @@
 from typing import List
+from pymongo import MongoClient
 from saga.config import MONGO_URI_FOR_TOOLS
 
 
@@ -10,6 +11,18 @@ class BaseTool:
         # Make sure relevant mongoDB will be available and created
         # db = self.client.get_database(self.tool_name)
         # collection = db.get_collection(self.username + "_inbox")
+
+    def _clear_data(self):
+        client = MongoClient(self.mongo_uri)
+        db = client.get_database(self.tool_name)
+        # Purge all data in this tool's storage
+        for collection_name in db.list_collection_names():
+            collection = db.get_collection(collection_name)
+            collection.delete_many({})
+        client.close()
+
+    def seed_data(self, data: List[dict]):
+        db = self.client.get_database(self.tool_name)
 
     def _get_name_from_field(self, text: str) -> str:
         """

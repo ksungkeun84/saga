@@ -1,5 +1,5 @@
-from agents.config import UserConfig
-from agents.base import AgentWrapper
+from agent_backend.config import UserConfig
+from agent_backend.base import AgentWrapper
 
 from saga.agent import Agent, get_agent_material
 
@@ -29,7 +29,7 @@ def main(mode, config_path, other_user_config_path=None):
         other_user_config = UserConfig.load(other_user_config_path, drop_extra_fields=False)
         other_agent_credentials_endpoint = f"{other_user_config.email}:{other_user_config.agents[AGENT_FOCUS].name}"
         print(other_agent_credentials_endpoint)
-        agent.connect(other_agent_credentials_endpoint, "Please simply repeat '<TASK_FINISHED>'")
+        agent.connect(other_agent_credentials_endpoint, "Hey - how are you?")
 
 
 if __name__ == "__main__":
