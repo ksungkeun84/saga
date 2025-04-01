@@ -276,7 +276,7 @@ class Agent:
         """
         with self.received_tokens_lock:
             if token not in self.received_tokens.keys():
-                print("Token not found.") 
+                logger.log("ACCESS", "Token provided by receiving agent not found in given tokens.")
                 return False
             
             # Check if the token is still valid:
@@ -286,13 +286,13 @@ class Agent:
             expiration_date = token_dict.get("expiration_timestamp")
             expiration_timestamp = datetime.fromisoformat(expiration_date)        
             if datetime.now(tz=timezone.utc) > expiration_timestamp:
-                print("Token expired.")
+                logger.log("ACCESS", "Token expired.")
                 return False
             
             # Check the communication quota:
             remaining_quota = token_dict.get("communication_quota")
             if remaining_quota == 0:
-                print("Communication quota reached.")
+                logger.log("ACCESS", "Token's max quota has been exceeded.")
                 return False
 
             return True
@@ -322,7 +322,7 @@ class Agent:
             return None
         return token
 
-    def initiate_conversation(self, conn, token: str, init_msg: str) -> bool:
+    def initiate_conversation(self, conn, token: str, r_aid: str, init_msg: str) -> bool:
         """
         Returns true if the conversation ended from the initiating side.
         """
@@ -352,6 +352,13 @@ class Agent:
 
             if msg['msg'] == self.task_finished_token:
                 logger.log("AGENT", "Task deemed complete from initiating side.")
+                # Invalidate the token:
+                with self.received_tokens_lock:
+                    # remove the token from the received tokens:
+                    del self.received_tokens[token]
+                    # remove the token from the aid_to_token dict:
+                    del self.aid_to_token[r_aid]
+                    logger.log("ACCESS", "Token invalidated from the initiating side.")
                 return True
             # Receive response:
             response = conn.recv(MAX_BUFFER_SIZE)
@@ -365,6 +372,13 @@ class Agent:
             logger.log("AGENT", f"Received: \'{received_message}\'")
             if received_message == self.task_finished_token:
                 logger.log("AGENT", "Task deemed complete from receiving side.")
+                # Invalidate the token:
+                with self.received_tokens_lock:
+                    # remove the token from the received tokens:
+                    del self.received_tokens[token]
+                    # remove the token from the aid_to_token dict:
+                    del self.aid_to_token[r_aid]
+                    logger.log("ACCESS", "Token invalidated from the receiving side.")
                 return False
             
             # Process message:
@@ -410,6 +424,11 @@ class Agent:
 
             if received_message == self.task_finished_token:
                 logger.log("AGENT", "Task deemed complete from initiating side.")
+                # Invalidate the token:
+                with self.active_tokens_lock:
+                    # remove the token from the active tokens:
+                    del self.active_tokens[token]
+                    logger.log("ACCESS", "Token invalidated from the initiating side.")
                 return False
 
             # Check if too many queries have been sent to your llm resources:
@@ -432,6 +451,11 @@ class Agent:
 
             if response_dict['msg'] == self.task_finished_token:
                 logger.log("AGENT", "Task deemed complete from receiving side.")
+                # Invalidate the token:
+                with self.active_tokens_lock:
+                    # remove the token from the active tokens:
+                    del self.active_tokens[token]
+                    logger.log("ACCESS", "Token invalidated from the receiving side.")
                 return True
 
     def connect(self, r_aid, message: str):
@@ -620,14 +644,14 @@ class Agent:
                         self.store_received_token(r_aid, new_enc_token_str, token_dict)
                         
                         # Start the conversation:
-                        self.initiate_conversation(conn, new_enc_token_str, message)         
+                        self.initiate_conversation(conn, new_enc_token_str, r_aid, message)         
                     else:
                         logger.log("ACCESS", f"Valid token found. Will start conversation.")
                         # If a valid token was found, the expected response is a message.
                         if response:
                             response_dict = json.loads(response.decode('utf-8'))
                             if response_dict["token"] is not None:
-                                self.initiate_conversation(conn, token, message)
+                                self.initiate_conversation(conn, token, r_aid, message)
                             else:
                                 logger.error("Token rejected from receiving side.")
                                 
