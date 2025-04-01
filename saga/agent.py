@@ -705,7 +705,8 @@ class Agent:
                         )
                     
                         i_device = i_agent_material.get("device")
-                        i_ip = i_agent_material.get("IP")
+                        # Use the connections's IP to verify the device information.
+                        i_ip = fromaddr[0]
                         i_port = i_agent_material.get("port")
                         dev_network_info = {
                             "aid": i_aid, 
