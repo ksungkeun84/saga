@@ -345,6 +345,9 @@ class Provider:
             No one-time keys are returned in the response. Only the public cryptographic
             material of the agent.
 
+            TODO: Sending the initiating agent's device IP is redundant. The receiving agent
+            should already know the IP address of the initiating agent from the connection.
+
             TODO: Implement contact policy enforcement. i.e., check if the agent that is being
             looked up is allowed to contact the agent performing the lookup. 
             """
