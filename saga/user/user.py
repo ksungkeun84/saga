@@ -7,6 +7,7 @@ import saga.crypto as sc
 from saga.ca.CA import get_SAGA_CA
 import os
 import json
+from saga.logger import Logger as logger
 
 
 def get_provider_cert():
@@ -39,11 +40,11 @@ state['keys'] = {}
 state['agents'] = {}
 
 
-def register():
-    email = input("Enter email: ")
-    password = input("Enter password: ")
+def register(email=None, password=None):
+    email = input("Enter email: ") if email is None else email
+    password = input("Enter password: ") if password is None else password
 
-    print("Generating cryptographic material...")
+    logger.log("USER", f"Generating user cryptographic material...")
     # Generate user signing key pair:
     sk_u, pk_u = sc.generate_ed25519_keypair()
 
@@ -64,8 +65,9 @@ def register():
             user_cert.public_bytes(sc.serialization.Encoding.PEM)
         ).decode("utf-8")
     }, verify=saga.config.CA_CERT_PATH)
-    print(response.json())
+    
     if response.status_code == 201:
+        logger.log("PROVIDER", f"User {email} registered successfully.")
         # Store the uid:
         state['uid'] = email
         # Store the key pair:
@@ -76,17 +78,18 @@ def register():
         # Save the keys to disk:
         if not os.path.exists(saga.config.USER_WORKDIR+"/keys"):
             os.mkdir(saga.config.USER_WORKDIR+"/keys")
+        logger.log("CRYPTO", f"Saving user keys to {saga.config.USER_WORKDIR}/keys/{email}")
         sc.save_ed25519_keys(saga.config.USER_WORKDIR+"/keys/"+email, sk_u, pk_u)
         sc.save_x509_certificate(saga.config.USER_WORKDIR+"/keys/"+email, user_cert)
 
-def login():
-    email = input("Enter email: ")
-    password = input("Enter password: ")
+def login(email=None, password=None):
+    email = input("Enter email: ") if email is None else email
+    password = input("Enter password: ") if password is None else password
 
     response = requests.post(f"{saga.config.PROVIDER_URL}/login", json={'uid': email, 'password': password}, verify=saga.config.CA_CERT_PATH) 
     if response.status_code == 200:
         token = response.json().get("access_token")
-        print("Login successful. Token:", token)
+        logger.log("PROVIDER", f"User {email} logged in successfully.")
         provider_tokens.append(token)
         state["uid"] = email
         # Load the keys from disk:
@@ -97,22 +100,21 @@ def login():
         }
         return token
     else:
-        print(response.json())
+        logger.error("USER", f"Login failed: {response.json().get('error')}")
         return None
 
-def oauth_login():
-    print("Open the following URL in a browser to authenticate via Google:")
-    print(f"{saga.config.PROVIDER_URL}/oauth_login")
-
-def register_agent():
+def register_agent(name=None, device=None, IP=None, port=None, num_one_time_keys=None, contact_rulebook=None):
     
-    name = input("Enter agent name: ")
-    device = input("Enter device name: ")
-    IP = input("Enter IP address: ")
-    port = input("Enter port: ")
-    num_one_time_keys = int(input("Enter number of one-time access keys: "))
-    contact_rulebook = input("Enter contact rulebook: ")
-    contact_rulebook = json.loads(contact_rulebook)
+    name = input("Enter agent name: ") if name is None else name
+    device = input("Enter device name: ") if device is None else device
+    IP = input("Enter IP address: ") if IP is None else IP
+    port = input("Enter port: ") if port is None else port
+    num_one_time_keys = int(input("Enter number of one-time access keys: ")) if num_one_time_keys is None else num_one_time_keys
+    if contact_rulebook is None:
+        contact_rulebook = input("Enter contact rulebook: ")
+        contact_rulebook = json.loads(contact_rulebook) 
+    else:
+        contact_rulebook = contact_rulebook
 
 
     # Assign the aid:
@@ -226,7 +228,7 @@ def register_agent():
     # Based on the provider's response, store the agent's cryptographic material
     if response.status_code == 201:  
         # Save the agent's cryptographic material
-        print(f"Agent {name} registered successfully.")  
+        logger.log("PROVIDER", f"Agent {name} registered successfully.")  
         state['agents'][name]= {
             'signing_key': {
                 'public': pk_a,
@@ -255,7 +257,8 @@ def register_agent():
         })
         spawn_agent(application)
     else:
-        print(response.json())
+        logger.error("USER", f"Agent registration failed: {response.json().get('error')}")
+        return None
 
 def spawn_agent(application):
     # Create agent directory if not exists:
@@ -272,19 +275,86 @@ def spawn_agent(application):
 
 if __name__ == "__main__":
 
-    while True:
-        print("======= SAGA User Client CLI =======")
-        print("1. Register\n2. Login\n3. Google OAuth Login\n4. Register Agent\n5. Exit")
-        choice = input("Choose an option: ")
+    # Parse the arguments:
+    import argparse
+    import yaml
+    import shutil
+    parser = argparse.ArgumentParser(description="SAGA User Client CLI")
+    parser.add_argument('--interactive', action='store_true', help='Run in interactive mode', default=False)
+    parser.add_argument('--uconfig', type=str, help='Path to the user configuration .yml file')
+    parser.add_argument('--register', action='store_true', help='Register a new user', default=False)
+    parser.add_argument('--login', action='store_true', help='Login with existing user', default=False)
+    parser.add_argument('--register-agents', action='store_true', help='Register agents for the user', default=False)
 
-        if choice == '1':
-            register()
-        elif choice == '2':
-            login()
-        elif choice == '3':
-            oauth_login()
-        elif choice == '4':
-            register_agent()
-        elif choice == '5':
-            print("Exiting...")
-            exit(0)
+
+    args = parser.parse_args()
+    if args.interactive:
+        logger.log("CLI", "Running in interactive mode...")
+        while True:
+            print("\033[1m======= SAGA User Client CLI =======\033[0m")
+            print("\033[1;34m1. Register\033[0m")
+            print("\033[1;32m2. Login\033[0m")
+            print("\033[1;33m3. Register Agent\033[0m")
+            print("\033[1;31m4. Exit\033[0m")
+            choice = input("Choose an option: ")
+
+            if choice == '1':
+                register()
+            elif choice == '2':
+                login()
+            elif choice == '3':
+                register_agent()
+            elif choice == '4':
+                print("Exiting...")
+                exit(0)
+    else:
+        # Print a line of '=' as wide as the terminal window
+        terminal_width = shutil.get_terminal_size().columns
+        print("=" * terminal_width)
+        logger.log("CLI", "Running in non-interactive mode...")
+
+        # load the yml file:
+        if args.uconfig:
+            logger.log("CLI", f"Loading user configuration from \033[1m{args.uconfig}\033[0m...")
+            with open(args.uconfig, 'r') as file:
+                user_config = yaml.safe_load(file)
+        else:
+            raise ValueError("User configuration file not provided.")        
+
+
+        if args.register:
+            logger.log("CLI", "Registering user...")
+            register(
+                email=user_config.get('email'),
+                password=user_config.get('passwd')
+            )
+        
+        if args.login:
+            logger.log("CLI", "Logging in user...")
+            login(
+                email=user_config.get('email'),
+                password=user_config.get('passwd')
+            )
+        
+        if args.register_agents:
+            # For agent in user_config.get('agents'):
+            for agent in user_config.get('agents'):
+                # First authenticate the user:
+                logger.log("CLI", "Authenticating user...")
+                # Authenticate the user:
+                login(
+                    email=user_config.get('email'),
+                    password=user_config.get('passwd')
+                )
+                # Then register the agent:
+                logger.log("CLI", "Registering agent...")
+                register_agent(
+                    name=agent.get('name'),
+                    device=agent.get('endpoint').get('device_name'),
+                    IP=agent.get('endpoint').get('ip'),
+                    port=agent.get('endpoint').get('port'),
+                    num_one_time_keys=agent.get('num_one_time_keys'),
+                    contact_rulebook=agent.get('contact_rulebook')
+                )
+    
+

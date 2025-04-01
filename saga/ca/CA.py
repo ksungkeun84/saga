@@ -2,7 +2,7 @@ import os
 import saga.crypto as sc
 import saga.config
 import requests
-
+from saga.logger import Logger as logger
 
 def download_file(url, save_path):
     response = requests.get(url, stream=True)
@@ -10,7 +10,7 @@ def download_file(url, save_path):
         with open(save_path, 'wb') as file:
             for chunk in response.iter_content(1024):
                 file.write(chunk)
-        print(f"File downloaded: {save_path}")
+        logger.log("CA", f"File downloaded: {save_path}")
     else:
         raise ValueError(f"Failed to download file from {url}. Status code: {response.status_code}")
 
@@ -34,6 +34,7 @@ class CA:
             raise ValueError("CA_ENDPOINT is None - please specify endpoint for CA")
         
         # Download files from endpoint
+        logger.log("CA", f"Downloading files from CA endpoint: {endpoint}")
         for file in ["key", "pub", "crt"]:
             url = f"{endpoint}/{self.orgname}.{file}"
             save_path = os.path.join(self.workdir, f"{self.orgname}.{file}")
@@ -41,30 +42,6 @@ class CA:
         
         # Load the keys and certificate of the CA, since they exist:
         self.private_key, self.public_key, self.cert = sc.load_ca(self.workdir, self.orgname)
-
-
-    def _old_init(self, workdir, config):
-
-        self.orgname = config.get("ORG_NAME", "CA")
-        self.workdir = workdir
-        if self.workdir[-1] != '/':
-            self.workdir += '/'
-        
-        if not os.path.exists(self.workdir):
-            os.mkdir(self.workdir)
-
-        # Check the the CA crypto does not exist:
-        if not (
-            os.path.exists(self.workdir+f"{self.orgname}.key") and 
-            os.path.exists(self.workdir+f"{self.orgname}.pub") and 
-            os.path.exists(self.workdir+f"{self.orgname}.crt")
-        ):
-            # Generate the keys and certificate of the CA:
-            self.private_key, self.public_key, self.cert = sc.generate_ca(config)
-            sc.save_ca(self.workdir, self.orgname, self.private_key, self.public_key, self.cert)
-        else:
-            # Load the keys and certificate of the CA, since they exist:
-            self.private_key, self.public_key, self.cert = sc.load_ca(self.workdir, self.orgname)
 
     def sign(self, public_key, config):
         """

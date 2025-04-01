@@ -869,6 +869,9 @@ class Agent:
                             
                             with self.otks_lock:
                                 # Look for the otk-sotk pair in the otks struct:
+                                if i_otk_bytes not in self.otks_dict.keys():
+                                    logger.error("Access control failed: unknown one-time key.")
+                                    raise Exception("Access control failed: unknown one-time key.")
                                 sotk = self.otks_dict[i_otk_bytes]
                                 # Remove the used one-time key to prevent replay attacks.
                                 del self.otks_dict[i_otk_bytes]

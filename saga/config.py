@@ -53,6 +53,5 @@ AGENT_DEFAULT_CONFIG = {
 }
 
 ### 3 Testing agents ###
-ASTRO_WORKDIR = ROOT_DIR+"/user/test@test.com:astro"
-BOBA_WORKDIR = ROOT_DIR+"/user/test@test.com:boba"
-COSMO_WORKDIR = None
+AGENT_GEORGE_WORKDIR = ROOT_DIR+"/user/george@mail.com:dummy_agent"
+AGENT_JOHN_WORKDIR = ROOT_DIR+"/user/john@mail.com:dummy_agent"
