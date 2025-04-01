@@ -1,3 +1,4 @@
+import fnmatch
 from flask import Flask, request, jsonify, redirect, url_for
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import create_access_token, JWTManager
@@ -84,6 +85,57 @@ class Provider:
         # Web server settings
         self.host = host
         self.port = port
+
+    def check_rulebook(self, rulebook):
+        """
+        Checks if the contact rulebook is valid.
+        """
+        for rule in rulebook:
+            # Rules are in the form of:
+            # alice@her_email.com:bobafet
+            components = rule.split(":")
+            if len(components) != 2:
+                return False
+            uid, name = components[0], components[1]
+            if not isinstance(uid, str) or not isinstance(name, str):
+                return False
+        return True
+
+    def check_aid(self, aid):
+        """
+        Checks if the AID is in the right format.
+        """
+        # AID is in the form of:
+        # alice@her_email.com:bobafet
+        components = aid.split(":")
+        if len(components) != 2:
+            return False
+        uid, name = components[0], components[1]
+        if not isinstance(uid, str) or not isinstance(name, str):
+            return False
+        # Check if the uid and name are valid:
+        # The uid must only have 1 '@' character and NO ':' characters.
+        if uid.count('@') != 1 or uid.count(':') != 0:
+            return False
+        # Check the name format:
+        # The name must not have any ':' characters.
+        if name.count(':') != 0:
+            return False
+        return True
+
+    def is_allowed_to_contact(self, contact_rulebook, t_aid):
+        """
+        This function checks if the agent is allowed to contact the target agent.
+        The contact rulebook is a list of strings in unix pattern format.
+        """
+        # Check that the t_aid is valid (correct format)
+        if not self.check_aid(t_aid):
+            return False
+        # Check if the target agent ID is in the contact rulebook
+        for rule in contact_rulebook:
+            if not fnmatch.fnmatch(t_aid, rule):
+                return False
+        return True
 
     def _register_routes(self):
         """Registers all Flask routes for the provider."""
@@ -224,6 +276,11 @@ class Provider:
             aid = application.get("aid")
             if not aid:
                 return jsonify({"message": "Agent aid not provided"}), 400
+
+            # Make sure that the aid is in the right format.
+            if not self.check_aid(aid):
+                return jsonify({"message": "Invalid agent aid format"}), 400
+            
             # Reject if aid is already being used by another agent.
             if self.agents_collection.find_one({"aid": aid}):
                 return jsonify({"message": f'Agent "{aid}" already exists.'}), 401
@@ -315,6 +372,12 @@ class Provider:
                 if self.agents_collection.find_one({"one_time_keys": {"$elemMatch": {"$eq": otk}}}):
                     return jsonify({"message": "One-time key already in use"}), 401
 
+            # Check the agent's contact rulebook:
+            contact_rulebook = application.get("contact_rulebook", [])
+            # Check if the rulebook is in the correct format.
+            if not self.check_rulebook(contact_rulebook):
+                return jsonify({"message": "Invalid contact rulebook format"}), 400
+
             # ========================================================================
             # At this stage, all required checks have been completed. The provider 
             # can now store the agent's cryptographic material in the database. 
@@ -327,6 +390,8 @@ class Provider:
                 "agent_cert": agent_cert_bytes,
                 "pac": pac_bytes,
                 "one_time_keys": otks_bytes,
+                # Contact rulebook:
+                "contact_rulebook": contact_rulebook,
                 # Signatures:
                 "agent_sig": agent_sig_bytes,
                 "one_time_key_sigs": otk_sigs_bytes,
@@ -347,14 +412,21 @@ class Provider:
 
             TODO: Sending the initiating agent's device IP is redundant. The receiving agent
             should already know the IP address of the initiating agent from the connection.
-
-            TODO: Implement contact policy enforcement. i.e., check if the agent that is being
-            looked up is allowed to contact the agent performing the lookup. 
             """
             data = request.json
             t_aid = data.get("t_aid", None)
 
             agent_metadata = self.agents_collection.find_one({"aid" : t_aid})
+            # CONTACT POLICY ENFORCEMENT:
+            # Get the agent's contact rulebook:
+            # Check if the agent is allowed to be contacted by the requesting agent.
+            if agent_metadata is None:
+                return jsonify({"message":"Agent not found."}), 404
+            # Check if the agent is allowed to be contacted by the requesting agent.
+            contact_rulebook = agent_metadata.get("contact_rulebook", [])
+            if not self.is_allowed_to_contact(contact_rulebook, t_aid):
+                return jsonify({"message":"Agent not allowed to be contacted."}), 403
+            
             user_metadata = self.users_collection.find_one({"uid" : t_aid.split(":")[0]})
             if user_metadata is None:
                 return jsonify({"message":"Cannot find agent owner."}), 404
@@ -363,6 +435,9 @@ class Provider:
             agent_metadata.update({"crt_u": crt_u_bytes})
             # Remove the one time keys from the response
             agent_metadata.pop("one_time_keys", None)
+            agent_metadata.pop("one_time_key_sigs", None)
+            # Remove the contact rulebook from the response
+            agent_metadata.pop("contact_rulebook", None)
 
             return jsonify(agent_metadata), 200
     
@@ -377,9 +452,6 @@ class Provider:
 
             The response will include the one-time key and the user's identity key
             along with all other relevant cryptographic material of the receiving agent.
-            
-            TODO: Implement contact policy enforcement. i.e., check if the agent that is being
-            accessed is allowed to be contacted by the agent performing the access request.
 
             TODO: This function is inneficient and is not scalable because it is fetching ALL
             the one time keys from the database. Only the last one should be fetched.
@@ -390,6 +462,17 @@ class Provider:
             user_metadata = self.users_collection.find_one({"uid" : t_aid.split(":")[0]})
             if user_metadata is None:
                 return jsonify({"message":"Cannot find agent owner."}), 404
+
+            # CONTACT POLCY ENFORCEMENT:
+            # Get the agent's contact rulebook:
+            agent_metadata_before = self.agents_collection.find_one({"aid" : t_aid})
+            # Check if the agent is allowed to be contacted by the requesting agent.
+            if agent_metadata_before is None:
+                return jsonify({"message":"Agent not found."}), 404
+            # Check if the agent is allowed to be contacted by the requesting agent.
+            contact_rulebook = agent_metadata_before.get("contact_rulebook", [])
+            if not self.is_allowed_to_contact(contact_rulebook, t_aid):
+                return jsonify({"message":"Agent not allowed to be contacted."}), 403
 
             agent_metadata = self.agents_collection.find_one_and_update(
                 {"aid": t_aid, "one_time_keys": {"$ne": []}},  # Ensure keys exist
@@ -406,9 +489,11 @@ class Provider:
             # Include the user's identity key in the response
             crt_u_bytes = user_metadata.get("crt_u")
             agent_metadata.update({"crt_u": crt_u_bytes})
-            # Remove the one time keys from the response
+            # Remove the one time keys from the response except the last one:
             agent_metadata['one_time_keys'] = [agent_metadata['one_time_keys'][-1]]
             agent_metadata['one_time_key_sigs'] = [agent_metadata['one_time_key_sigs'][-1]]
+            # Remove the contact rulebook from the response
+            agent_metadata.pop("contact_rulebook", None)
 
             return jsonify(agent_metadata), 200
     

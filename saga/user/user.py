@@ -111,6 +111,9 @@ def register_agent():
     IP = input("Enter IP address: ")
     port = input("Enter port: ")
     num_one_time_keys = int(input("Enter number of one-time access keys: "))
+    contact_rulebook = input("Enter contact rulebook: ")
+    contact_rulebook = json.loads(contact_rulebook)
+
 
     # Assign the aid:
     aid = state['uid'] + ":" + name
@@ -206,6 +209,8 @@ def register_agent():
             format=sc.serialization.PublicFormat.Raw)).decode("utf-8"),
         # batch of public one-time keys
         'otks': public_one_time_keys_2_b64,
+        # CONTACT RULEBOOK:
+        'contact_rulebook': contact_rulebook,
         # SIGNATURES:
         'agent_sig': base64.b64encode(agent_sig).decode("utf-8"), # Agent signature
         # and their corresponding signatures

@@ -1,3 +1,4 @@
+import fnmatch
 import threading
 import time
 import json
@@ -161,7 +162,10 @@ class Agent:
             )] = self.sotks[i] 
 
         # Agent Contact Policy Rulebook:
-        self.contact_rulebook = material.get("contact_rulebook", None)
+        self.contact_rulebook = material.get("contact_rulebook", [])
+        if not self.check_rulebook(self.contact_rulebook):
+            logger.error("Contact rulebook is not valid. Exiting...")
+            raise Exception("Contact rulebook is not valid. Exiting...")
 
         # Init token storing dicts:
         self.active_tokens = {} # Active tokens that were given to initiating agents from the agent.
@@ -185,7 +189,8 @@ class Agent:
             # Convert extended-json dict to python dict:
             data = bson.json_util.loads(json.dumps(data))
             return data
-        else:
+        elif response.status_code == 403:
+            logger.log("ACCESS", f"Access denied to {t_aid}.")
             print(response.json())
             return None        
         
@@ -196,7 +201,8 @@ class Agent:
             # Convert extended-json dict to python dict:
             data = bson.json_util.loads(json.dumps(data))
             return data
-        else:
+        elif response.status_code == 403:
+            logger.log("ACCESS", f"Access denied to {t_aid}.")
             print(response.json())
             return None
 
@@ -674,6 +680,71 @@ class Agent:
             except:
                 logger.log("NETWORK", "Connection already closed by other party.")
 
+    def check_rulebook(self, rulebook):
+        """
+        Checks if the contact rulebook is valid.
+        """
+        for rule in rulebook:
+            # Rules are in the form of:
+            # alice@her_email.com:bobafet
+            components = rule.split(":")
+            if len(components) != 2:
+                logger.error("Invalid AC rule format. Expected format: <aid> = <uid>:<name>")
+                return False
+            uid, name = components[0], components[1]
+            if not isinstance(uid, str) or not isinstance(name, str):
+                logger.error("Invalid AC rule format. Expected format: <aid> = <uid>:<name>. Both the uid and aid must be strings.")
+                return False
+        return True
+
+    def check_aid(self, aid):
+        """
+        Checks if the AID is in the right format.
+        """
+        # AID is in the form of:
+        # alice@her_email.com:bobafet
+        components = aid.split(":")
+        if len(components) != 2:
+            logger.error("Invalid AID format. Expected format: <aid> = <uid>:<name>")
+            return False
+        uid, name = components[0], components[1]
+        if not isinstance(uid, str) or not isinstance(name, str):
+            logger.error("Invalid AID format. Expected format: <aid> = <uid>:<name>. Both the uid and aid must be strings.")
+            return False
+        # Check if the uid and name are valid:
+        # The uid must only have 1 '@' character and NO ':' characters.
+        if uid.count('@') != 1 or uid.count(':') != 0:
+            logger.error("Invalid UID format.")
+        # Check the name format:
+        # The name must not have any ':' characters.
+        if name.count(':') != 0:
+            logger.error("Invalid NAME format.")
+            return False
+        return True
+
+    def allowed_to_contact(self, i_aid):
+        """
+        Checks if the initiating agent is allowed to contact the receiving agent.
+        """
+
+        # Check that the i_aid is in the right format:
+        if not self.check_aid(i_aid):
+            logger.error("Invalid AID format. Expected format: <aid> = <uid>:<name>")
+            return False
+
+        # If no contact rulebook is provided, all agents are allowed to contact each other:
+        if self.contact_rulebook is None:
+            return True
+        
+        # Check if the agent is allowed to contact the receiving agent:
+        for rule in self.contact_rulebook:
+            # Use fnmatch for Unix filename pattern matching
+            if not fnmatch.fnmatch(i_aid, rule):
+                # The agent is NOT allowed to contact the receiving agent.
+                return False
+        # Otherwise, the agent is allowed to contact the receiving agent.
+        return True
+
     def handle_i_agent_connection(self, conn, fromaddr):
         """
         Handles an incoming TLS connection from an intiating agent.
@@ -691,6 +762,15 @@ class Agent:
 
                         # Extract i_aid:
                         i_aid = received_msg.get("aid", None)
+
+                        if i_aid is None:
+                            logger.error("No agent ID found in the initial message from the initiating side.")
+                            raise Exception("No agent ID provided.")
+                        
+                        if not self.allowed_to_contact(i_aid):
+                            # The initiating agent is not allowed to contact the receiving agent.
+                            logger.log("ACCESS", f"Access control failed: {i_aid} is not allowed to contact this agent.")
+                            raise Exception(f"Access control failed: {i_aid} is not allowed to contact this agent.")
 
                         # Ask the provider for the details of the initiating agent:
                         logger.log("ACCESS", f"Fetching crypto and device information for {i_aid} from the Provider.")
