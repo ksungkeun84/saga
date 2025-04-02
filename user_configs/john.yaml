@@ -1,8 +1,8 @@
-name: Emma Johnson
+name: John Doe
 phone_number: "+44 20 7946 0958"
-email: emma_johnson@gmail.com
-passwd: "emma"
-date_of_birth: "1995-04-12"
+email: john@mail.com
+passwd: "john"
+date_of_birth: "2003-11-12"
 current_address: "14 Kensington Gardens, London, W8 4PT, UK"
 ssn: "123-45-6789"
 age: 28
@@ -41,20 +41,18 @@ media_preferences:
   - "Travel Blogs"
 
 agents:
-  - name: "email_calendar_agent"
-    model_type: "OpenAIServerModel"
-    api_base: "http://192.168.2.59:8000/v1"
-    description: "An agent that can send and receive emails and interact with the user's calendar."
-    model: "Qwen/Qwen2.5-72B-Instruct"
-    additional_authorized_imports: [
-      "datetime"
-    ]
+  - name: "dummy_agent"
+    model_type: null
+    api_base: null
+    description: "A dummy agent for protocol testing."
+    model: null
+    additional_authorized_imports: []
     tools:
       - email
       - calendar
     endpoint:
-      ip: 192.168.2.57
+      ip: 127.0.0.1
       port: 7000
-      device_name: biggpu
+      device_name: lambda
     contact_rulebook: []
     num_one_time_keys: 100

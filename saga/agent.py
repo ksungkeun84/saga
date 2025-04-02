@@ -1,3 +1,4 @@
+import fnmatch
 import threading
 import time
 import json
@@ -160,6 +161,12 @@ class Agent:
                 format=sc.serialization.PublicFormat.Raw
             )] = self.sotks[i] 
 
+        # Agent Contact Policy Rulebook:
+        self.contact_rulebook = material.get("contact_rulebook", [])
+        if not self.check_rulebook(self.contact_rulebook):
+            logger.error("Contact rulebook is not valid. Exiting...")
+            raise Exception("Contact rulebook is not valid. Exiting...")
+
         # Init token storing dicts:
         self.active_tokens = {} # Active tokens that were given to initiating agents from the agent.
         self.active_tokens_lock = threading.Lock()
@@ -182,7 +189,8 @@ class Agent:
             # Convert extended-json dict to python dict:
             data = bson.json_util.loads(json.dumps(data))
             return data
-        else:
+        elif response.status_code == 403:
+            logger.log("ACCESS", f"Access denied to {t_aid}.")
             print(response.json())
             return None        
         
@@ -193,7 +201,8 @@ class Agent:
             # Convert extended-json dict to python dict:
             data = bson.json_util.loads(json.dumps(data))
             return data
-        else:
+        elif response.status_code == 403:
+            logger.log("ACCESS", f"Access denied to {t_aid}.")
             print(response.json())
             return None
 
@@ -276,7 +285,7 @@ class Agent:
         """
         with self.received_tokens_lock:
             if token not in self.received_tokens.keys():
-                print("Token not found.") 
+                logger.log("ACCESS", "Token provided by receiving agent not found in given tokens.")
                 return False
             
             # Check if the token is still valid:
@@ -286,13 +295,13 @@ class Agent:
             expiration_date = token_dict.get("expiration_timestamp")
             expiration_timestamp = datetime.fromisoformat(expiration_date)        
             if datetime.now(tz=timezone.utc) > expiration_timestamp:
-                print("Token expired.")
+                logger.log("ACCESS", "Token expired.")
                 return False
             
             # Check the communication quota:
             remaining_quota = token_dict.get("communication_quota")
             if remaining_quota == 0:
-                print("Communication quota reached.")
+                logger.log("ACCESS", "Token's max quota has been exceeded.")
                 return False
 
             return True
@@ -322,7 +331,7 @@ class Agent:
             return None
         return token
 
-    def initiate_conversation(self, conn, token: str, init_msg: str) -> bool:
+    def initiate_conversation(self, conn, token: str, r_aid: str, init_msg: str) -> bool:
         """
         Returns true if the conversation ended from the initiating side.
         """
@@ -352,6 +361,13 @@ class Agent:
 
             if msg['msg'] == self.task_finished_token:
                 logger.log("AGENT", "Task deemed complete from initiating side.")
+                # Invalidate the token:
+                with self.received_tokens_lock:
+                    # remove the token from the received tokens:
+                    del self.received_tokens[token]
+                    # remove the token from the aid_to_token dict:
+                    del self.aid_to_token[r_aid]
+                    logger.log("ACCESS", "Token invalidated from the initiating side.")
                 return True
             # Receive response:
             response = conn.recv(MAX_BUFFER_SIZE)
@@ -365,6 +381,13 @@ class Agent:
             logger.log("AGENT", f"Received: \'{received_message}\'")
             if received_message == self.task_finished_token:
                 logger.log("AGENT", "Task deemed complete from receiving side.")
+                # Invalidate the token:
+                with self.received_tokens_lock:
+                    # remove the token from the received tokens:
+                    del self.received_tokens[token]
+                    # remove the token from the aid_to_token dict:
+                    del self.aid_to_token[r_aid]
+                    logger.log("ACCESS", "Token invalidated from the receiving side.")
                 return False
             
             # Process message:
@@ -410,6 +433,11 @@ class Agent:
 
             if received_message == self.task_finished_token:
                 logger.log("AGENT", "Task deemed complete from initiating side.")
+                # Invalidate the token:
+                with self.active_tokens_lock:
+                    # remove the token from the active tokens:
+                    del self.active_tokens[token]
+                    logger.log("ACCESS", "Token invalidated from the initiating side.")
                 return False
 
             # Check if too many queries have been sent to your llm resources:
@@ -432,6 +460,11 @@ class Agent:
 
             if response_dict['msg'] == self.task_finished_token:
                 logger.log("AGENT", "Task deemed complete from receiving side.")
+                # Invalidate the token:
+                with self.active_tokens_lock:
+                    # remove the token from the active tokens:
+                    del self.active_tokens[token]
+                    logger.log("ACCESS", "Token invalidated from the receiving side.")
                 return True
 
     def connect(self, r_aid, message: str):
@@ -620,14 +653,14 @@ class Agent:
                         self.store_received_token(r_aid, new_enc_token_str, token_dict)
                         
                         # Start the conversation:
-                        self.initiate_conversation(conn, new_enc_token_str, message)         
+                        self.initiate_conversation(conn, new_enc_token_str, r_aid, message)         
                     else:
                         logger.log("ACCESS", f"Valid token found. Will start conversation.")
                         # If a valid token was found, the expected response is a message.
                         if response:
                             response_dict = json.loads(response.decode('utf-8'))
                             if response_dict["token"] is not None:
-                                self.initiate_conversation(conn, token, message)
+                                self.initiate_conversation(conn, token, r_aid, message)
                             else:
                                 logger.error("Token rejected from receiving side.")
                                 
@@ -647,6 +680,71 @@ class Agent:
             except:
                 logger.log("NETWORK", "Connection already closed by other party.")
 
+    def check_rulebook(self, rulebook):
+        """
+        Checks if the contact rulebook is valid.
+        """
+        for rule in rulebook:
+            # Rules are in the form of:
+            # alice@her_email.com:bobafet
+            components = rule.split(":")
+            if len(components) != 2:
+                logger.error("Invalid AC rule format. Expected format: <aid> = <uid>:<name>")
+                return False
+            uid, name = components[0], components[1]
+            if not isinstance(uid, str) or not isinstance(name, str):
+                logger.error("Invalid AC rule format. Expected format: <aid> = <uid>:<name>. Both the uid and aid must be strings.")
+                return False
+        return True
+
+    def check_aid(self, aid):
+        """
+        Checks if the AID is in the right format.
+        """
+        # AID is in the form of:
+        # alice@her_email.com:bobafet
+        components = aid.split(":")
+        if len(components) != 2:
+            logger.error("Invalid AID format. Expected format: <aid> = <uid>:<name>")
+            return False
+        uid, name = components[0], components[1]
+        if not isinstance(uid, str) or not isinstance(name, str):
+            logger.error("Invalid AID format. Expected format: <aid> = <uid>:<name>. Both the uid and aid must be strings.")
+            return False
+        # Check if the uid and name are valid:
+        # The uid must only have 1 '@' character and NO ':' characters.
+        if uid.count('@') != 1 or uid.count(':') != 0:
+            logger.error("Invalid UID format.")
+        # Check the name format:
+        # The name must not have any ':' characters.
+        if name.count(':') != 0:
+            logger.error("Invalid NAME format.")
+            return False
+        return True
+
+    def allowed_to_contact(self, i_aid):
+        """
+        Checks if the initiating agent is allowed to contact the receiving agent.
+        """
+
+        # Check that the i_aid is in the right format:
+        if not self.check_aid(i_aid):
+            logger.error("Invalid AID format. Expected format: <aid> = <uid>:<name>")
+            return False
+
+        # If no contact rulebook is provided, all agents are allowed to contact each other:
+        if self.contact_rulebook is None:
+            return True
+        
+        # Check if the agent is allowed to contact the receiving agent:
+        for rule in self.contact_rulebook:
+            # Use fnmatch for Unix filename pattern matching
+            if not fnmatch.fnmatch(i_aid, rule):
+                # The agent is NOT allowed to contact the receiving agent.
+                return False
+        # Otherwise, the agent is allowed to contact the receiving agent.
+        return True
+
     def handle_i_agent_connection(self, conn, fromaddr):
         """
         Handles an incoming TLS connection from an intiating agent.
@@ -664,6 +762,15 @@ class Agent:
 
                         # Extract i_aid:
                         i_aid = received_msg.get("aid", None)
+
+                        if i_aid is None:
+                            logger.error("No agent ID found in the initial message from the initiating side.")
+                            raise Exception("No agent ID provided.")
+                        
+                        if not self.allowed_to_contact(i_aid):
+                            # The initiating agent is not allowed to contact the receiving agent.
+                            logger.log("ACCESS", f"Access control failed: {i_aid} is not allowed to contact this agent.")
+                            raise Exception(f"Access control failed: {i_aid} is not allowed to contact this agent.")
 
                         # Ask the provider for the details of the initiating agent:
                         logger.log("ACCESS", f"Fetching crypto and device information for {i_aid} from the Provider.")
@@ -689,7 +796,6 @@ class Agent:
                         pk_u = i_agent_user_cert.public_key()
                     
                         # Verify the agent's identity:
-                        i_aid = i_agent_material.get("aid", None)
                         i_agent_cert_bytes = i_agent_material.get("agent_cert", None)
                         i_agent_cert = sc.bytesToX509Certificate(
                             i_agent_cert_bytes 
@@ -763,6 +869,9 @@ class Agent:
                             
                             with self.otks_lock:
                                 # Look for the otk-sotk pair in the otks struct:
+                                if i_otk_bytes not in self.otks_dict.keys():
+                                    logger.error("Access control failed: unknown one-time key.")
+                                    raise Exception("Access control failed: unknown one-time key.")
                                 sotk = self.otks_dict[i_otk_bytes]
                                 # Remove the used one-time key to prevent replay attacks.
                                 del self.otks_dict[i_otk_bytes]

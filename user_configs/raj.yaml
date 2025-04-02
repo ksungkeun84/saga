@@ -1,6 +1,7 @@
 name: Raj Sharma
 phone_number: "+91 22 1584 5633"
 email: raj.sharma@gmail.com
+passwd: "raj"
 date_of_birth: "1979-03-15"
 current_address: "12 Rue de Rivoli, Paris, 75001, France"
 ssn: "AADHAR125113290"
@@ -56,3 +57,5 @@ agents:
       ip: 192.168.2.59
       port: 7000
       device_name: gamma
+    contact_rulebook: []
+    num_one_time_keys: 100
