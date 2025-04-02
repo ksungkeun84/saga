@@ -238,8 +238,7 @@ class CodeAgentWrapper(AgentWrapper):
     def __init__(self,
                  user_config: UserConfig,
                  config: AgentConfig):
-        super().__init__(self,
-                         user_config=user_config, 
+        super().__init__(user_config=user_config, 
                          config=config,
                          prompt_filename="CodeAgent.yaml")
 
@@ -251,8 +250,7 @@ class ToolCallingAgentWrapper(AgentWrapper):
     def __init__(self,
                  user_config: UserConfig,
                  config: AgentConfig):
-        super().__init__(self,
-                         user_config=user_config, 
+        super().__init__(user_config=user_config, 
                          config=config,
                          prompt_filename="ToolCallingAgent.yaml")
 
