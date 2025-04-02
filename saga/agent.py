@@ -684,6 +684,8 @@ class Agent:
         """
         Checks if the contact rulebook is valid.
         """
+        if rulebook is None:
+            return False
         for rule in rulebook:
             # Rules are in the form of:
             # alice@her_email.com:bobafet
@@ -725,25 +727,22 @@ class Agent:
     def allowed_to_contact(self, i_aid):
         """
         Checks if the initiating agent is allowed to contact the receiving agent.
+        If the
         """
 
         # Check that the i_aid is in the right format:
         if not self.check_aid(i_aid):
             logger.error("Invalid AID format. Expected format: <aid> = <uid>:<name>")
             return False
-
-        # If no contact rulebook is provided, all agents are allowed to contact each other:
-        if self.contact_rulebook is None:
-            return True
         
         # Check if the agent is allowed to contact the receiving agent:
         for rule in self.contact_rulebook:
             # Use fnmatch for Unix filename pattern matching
-            if not fnmatch.fnmatch(i_aid, rule):
-                # The agent is NOT allowed to contact the receiving agent.
-                return False
-        # Otherwise, the agent is allowed to contact the receiving agent.
-        return True
+            if fnmatch.fnmatch(i_aid, rule):
+                # The agent is allowed to contact the receiving agent.
+                return True
+        # Otherwise, the agent is not allowed to contact the receiving agent.
+        return False
 
     def handle_i_agent_connection(self, conn, fromaddr):
         """

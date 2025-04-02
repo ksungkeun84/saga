@@ -127,15 +127,17 @@ class Provider:
         """
         This function checks if the agent is allowed to contact the target agent.
         The contact rulebook is a list of strings in unix pattern format.
+        If the contact rulebook is empty, by convention, the receiving agent 
+        is not allowed to be contacted by any agent.
         """
         # Check that the t_aid is valid (correct format)
         if not self.check_aid(t_aid):
             return False
         # Check if the target agent ID is in the contact rulebook
         for rule in contact_rulebook:
-            if not fnmatch.fnmatch(t_aid, rule):
-                return False
-        return True
+            if fnmatch.fnmatch(t_aid, rule):
+                return True
+        return False
 
     def _register_routes(self):
         """Registers all Flask routes for the provider."""
