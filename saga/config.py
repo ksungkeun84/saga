@@ -5,7 +5,6 @@ import os
 # MondoDB connection string (for tool-related data)
 MONGO_URI_FOR_TOOLS = "mongodb://129.10.187.52:27017/saga_tools"
 
-# ROOT_DIR = "/home/anshumansuri/work/saga/saga"
 # Get root-dir automatically
 ROOT_DIR = os.path.dirname(saga.__file__)
 

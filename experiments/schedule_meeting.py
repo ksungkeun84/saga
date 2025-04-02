@@ -2,7 +2,7 @@
     Ask one agent to schedule a meeting with another agent.
 """
 from agent_backend.config import UserConfig
-from agent_backend.base import AgentWrapper
+from agent_backend.base import get_agent
 import os
 from datetime import datetime
 
@@ -29,9 +29,9 @@ class MeetingScheduleTest(Test):
             2. Meeting does not conflict with any existing meetings for either agents.
             3. Meeting is not in the past.
         """
-        self_calendar = LocalCalendarTool(name=self.user_config.name,
+        self_calendar = LocalCalendarTool(user_name=self.user_config.name,
                                           user_email= self.user_config.email)
-        other_calendar = LocalCalendarTool(name=other_agent_name,
+        other_calendar = LocalCalendarTool(user_name=other_agent_name,
                                            user_email=other_agent_email)
         
         # TODO- make sure nobody else was invited to the meeting
@@ -67,10 +67,10 @@ class MeetingScheduleTest(Test):
 
 def main(mode, config_path, other_user_config_path=None):
     AGENT_FOCUS = 0
-    config = UserConfig.load(config_path, drop_extra_fields=False)
+    config = UserConfig.load(config_path, drop_extra_fields=True)
 
     # Initialize local agent
-    local_agent = AgentWrapper(config, config.agents[0])
+    local_agent = get_agent(config, config.agents[0])
 
     # Focus on first agent - infer credentials endpoint
     credentials_endpoint = os.path.join(ROOT_DIR, f"user/{config.email}:{config.agents[AGENT_FOCUS].name}/")
@@ -87,11 +87,11 @@ def main(mode, config_path, other_user_config_path=None):
         agent.listen()
     else:
         # Get endpoint for other agent
-        other_user_config = UserConfig.load(other_user_config_path, drop_extra_fields=False)
+        other_user_config = UserConfig.load(other_user_config_path, drop_extra_fields=True)
         other_agent_credentials_endpoint = f"{other_user_config.email}:{other_user_config.agents[AGENT_FOCUS].name}"
         print(other_agent_credentials_endpoint)
         # agent.connect(other_agent_credentials_endpoint, "Please simply repeat '<TASK_FINISHED>'")
-        task = "Let's find some time to meet next week. Tell me what slot works for you and lett us book our calendars for then."
+        task = "Let's find some time to meet next week. Tell me what slot works for you and let's book our calendars for then."
         agent.connect(other_agent_credentials_endpoint, task)
 
         # Create test object

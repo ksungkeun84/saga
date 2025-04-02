@@ -24,7 +24,7 @@ def main(user_configs_path):
     for fpath in os.listdir(user_configs_path):
         config_path = os.path.join(user_configs_path, fpath)
         # Read user config
-        config = UserConfig.load(config_path, drop_extra_fields=False)
+        config = UserConfig.load(config_path, drop_extra_fields=True)
         all_user_tools = []
         for agent in config.agents:
             all_user_tools.extend(agent.tools)
@@ -45,9 +45,12 @@ def main(user_configs_path):
             # Clear out existing data
             tool_obj._clear_data()
 
-            # Read relevant data from data/
-            jsonl_data = read_jsonl_data(os.path.join(PATH_WITH_SEED_DATA, fpath.split(".yaml")[0], f"{tool}.jsonl"))
-            tool_obj.seed_data(jsonl_data)
+            # Read relevant data from data/, if there is any
+            path = os.path.join(PATH_WITH_SEED_DATA, fpath.split(".yaml")[0], f"{tool}.jsonl")
+            if os.path.exists(path):
+                jsonl_data = read_jsonl_data(path)
+                tool_obj.seed_data(jsonl_data)
+                print("Seeded %s tool data for user %s" % (tool, name))
     
     print("Cleared all users' tool-related data and seeded with provided data!")
 

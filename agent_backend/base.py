@@ -1,4 +1,4 @@
-from smolagents import CodeAgent, HfApiModel, TransformersModel, OpenAIServerModel, PromptTemplates, MultiStepAgent
+from smolagents import CodeAgent, HfApiModel, TransformersModel, OpenAIServerModel, MultiStepAgent
 from agent_backend.config import AgentConfig, UserConfig
 import yaml
 from typing import List
@@ -17,11 +17,15 @@ class AgentWrapper:
     """
         Base agents wrapper, built on top of CodeAgent form smolagents
     """
-    def __init__(self, user_config: UserConfig, config: AgentConfig):
+    def __init__(self,
+                 user_config: UserConfig,
+                 config: AgentConfig,
+                 prompt_filename: str):
         # TODO: should not provide all of user-config (airgap ftw) - think about this later
         self.user_config = user_config
         self.config = config
         self.tool_collections = []
+        self.prompt_filename = prompt_filename
 
         # Collect all tools
         self._collect_tools_for_use()
@@ -32,10 +36,13 @@ class AgentWrapper:
         self.task_finished_token = "<TASK_FINISHED>"
 
         # Read YAML file
+        self._set_custom_prompt(self.prompt_filename)
+
+    def _set_custom_prompt(self, prompt_filename: str):
         DIR_ABOVE_ROOT_DIR = os.path.dirname(ROOT_DIR)
-        with open(os.path.join(DIR_ABOVE_ROOT_DIR, "agent_backend", "prompts", "code_agent_custom_prompt.yaml"), 'r') as file:
+        with open(os.path.join(DIR_ABOVE_ROOT_DIR, "agent_backend", "custom_prompts", prompt_filename), 'r') as file:
             self.custom_prompt = yaml.safe_load(file)
-    
+
     def _initialize_base_model(self):
         if self.config.model_type == "TransformersModel":
             model = TransformersModel(
@@ -168,7 +175,6 @@ class AgentWrapper:
         return tools_available
 
     def _initialize_agent(self, initiating_agent: bool) -> MultiStepAgent:
-
         if initiating_agent:
             preamble = self.custom_prompt["initiating_agent"]
         else:
@@ -176,7 +182,7 @@ class AgentWrapper:
         
         # Fill in the template text
         # TODO: Find a better way around this mess
-        template_text = self.custom_prompt["custom_system_prompt"].replace("[[[preamble]]]", preamble).replace("[[[task_finished_token]]]", self.task_finished_token)
+        template_text = self.custom_prompt["system_prompt"].replace("[[[preamble]]]", preamble).replace("[[[task_finished_token]]]", self.task_finished_token)
         # Use this template text as the 
 
         agent = CodeAgent(
@@ -223,3 +229,41 @@ class AgentWrapper:
 
         response = agent_instance.run(str(query), reset=False, **kwargs)
         return agent_instance, response
+
+
+class CodeAgentWrapper(AgentWrapper):
+    """
+        Wrapper class for a CodeAgent from smolagents.
+    """
+    def __init__(self,
+                 user_config: UserConfig,
+                 config: AgentConfig):
+        super().__init__(self,
+                         user_config=user_config, 
+                         config=config,
+                         prompt_filename="CodeAgent.yaml")
+
+
+class ToolCallingAgentWrapper(AgentWrapper):
+    """
+        Wrapper class for a ToolCallingAgent from smolagents.
+    """
+    def __init__(self,
+                 user_config: UserConfig,
+                 config: AgentConfig):
+        super().__init__(self,
+                         user_config=user_config, 
+                         config=config,
+                         prompt_filename="ToolCallingAgent.yaml")
+
+
+def get_agent(user_config: UserConfig,
+              config: AgentConfig) -> AgentWrapper:
+    if config.base_agent_type == "CodeAgent":
+        return CodeAgentWrapper(user_config=user_config,
+                                config=config)
+    elif config.base_agent_type == "ToolCallingAgent":
+        return ToolCallingAgentWrapper(user_config=user_config,
+                                       config=config)
+
+    raise NotImplementedError(f"Base agent type {config.base_agent_type} not supported.")
