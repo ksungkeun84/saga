@@ -453,13 +453,14 @@ class Provider:
             The response will include the one-time key and the user's identity key
             along with all other relevant cryptographic material of the receiving agent.
 
-            # TODO: this is wrong and it needs to be fixed. We need tha aid of who is accessing
-            the agent, not the just t_aid. The t_aid is the target agent ID of which we need to
-            check the rulebook.
-
             TODO: This function is inneficient and is not scalable because it is fetching ALL
             the one time keys from the database. Only the last one should be fetched.
             """
+            
+            # Convert PEM format string to bytes            
+            i_aid_cert_bytes = request.environ.get('SSL_CLIENT_CERT').encode('utf-8')  # Extracts iniating agents's certificate
+        
+
             data = request.json
             i_aid = data.get("i_aid", None) # the initiating agent
             t_aid = data.get("t_aid", None) # the receiving agent
@@ -470,6 +471,12 @@ class Provider:
                 logger.error(f"Invalid agent ID format.")
                 return jsonify({"message":f"Invalid agent ID: {i_aid} format."}), 400
             uid = t_aid.split(":")[0]
+
+            # Make sure that the initiating agent is indeed who they claim to be:
+            i_agent_metadata = self.agents_collection.find_one({"aid" : i_aid, "agent_cert": i_aid_cert_bytes})
+            if i_agent_metadata is None:
+                logger.error(f"ACCESS DENIED. ALSO ADD THAT BUM TO A BLACKLIST.")
+                return jsonify({"message":"Agent not found."}), 403
 
             user_metadata = self.users_collection.find_one({"uid" : uid})
             if user_metadata is None:

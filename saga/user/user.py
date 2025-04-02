@@ -69,7 +69,7 @@ def register(email=None, password=None):
             user_cert.public_bytes(sc.serialization.Encoding.PEM)
         ).decode("utf-8")
     }, verify=saga.config.CA_CERT_PATH, cert=(
-        saga.config.USER_WORKDIR+"/keys/"+email+".crt", saga.config.USER_WORKDIR+"/keys/"+"k"+".key"
+        saga.config.USER_WORKDIR+"/keys/"+email+".crt", saga.config.USER_WORKDIR+"/keys/"+email+".key"
     ))
     
     if response.status_code == 201:

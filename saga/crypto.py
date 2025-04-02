@@ -273,6 +273,14 @@ def der_to_pem(der_bytes):
     pem_bytes += b"-----END CERTIFICATE-----\n"
     return pem_bytes
 
+def pem_to_bytes(pem_string):
+    """
+    Converts a PEM format string to bytes by removing the header, footer, and newlines.
+    """
+    pem_lines = pem_string.strip().splitlines()
+    pem_body = [line for line in pem_lines if not line.startswith("-----")]
+    return base64.b64decode("".join(pem_body))
+
 def load_x509_certificate(path):
     # Load the Self-Signed Certificate
     with open(path, "rb") as f:
