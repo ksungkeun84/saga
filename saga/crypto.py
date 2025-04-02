@@ -264,6 +264,14 @@ def save_x509_certificate(name, certificate):
 def bytesToX509Certificate(bytes):
     return x509.load_pem_x509_certificate(bytes)
 
+def der_to_pem(der_bytes):
+    """
+    Convert DER bytes to PEM format.
+    """
+    pem_bytes = b"-----BEGIN CERTIFICATE-----\n"
+    pem_bytes += base64.b64encode(der_bytes) + b"\n"
+    pem_bytes += b"-----END CERTIFICATE-----\n"
+    return pem_bytes
 
 def load_x509_certificate(path):
     # Load the Self-Signed Certificate

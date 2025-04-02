@@ -1,5 +1,6 @@
 import fnmatch
-from flask import Flask, request, jsonify, redirect, url_for
+import ssl
+from flask import Flask, request, jsonify
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import create_access_token, JWTManager
 from flask_pymongo import PyMongo
@@ -9,6 +10,7 @@ import base64
 from datetime import datetime, timezone, timedelta
 import os
 import saga.config
+from saga.logger import Logger as logger
 
 class Provider:
     def __init__(
@@ -69,12 +71,22 @@ class Provider:
         """
         Checks if the contact rulebook is valid.
         """
+        if rulebook is None:
+            return False
         for rule in rulebook:
             # Rules are in the form of:
             # alice@her_email.com:bobafet
             components = rule.split(":")
+            if len(components) == 1:
+                if components[0] != "*":
+                    logger.error(f"Invalid rulebook format: {rule}")
+                    return False
+                continue
+            
             if len(components) != 2:
+                logger.error(f"Invalid rulebook format: {rule}")
                 return False
+            
             uid, name = components[0], components[1]
             if not isinstance(uid, str) or not isinstance(name, str):
                 return False
@@ -144,6 +156,7 @@ class Provider:
             password = data.get("password")
 
             if self.users_collection.find_one({"uid": uid}):
+                logger.error(f"User {uid} already exists.")
                 return jsonify({"message": "User already exists"}), 400
 
             # Store password hash and identity key in the database.
@@ -155,6 +168,7 @@ class Provider:
             try:
                 self.CA.verify(crt_u)
             except:
+                logger.error(f"Invalid user certificate.")
                 return jsonify({"message": "Invalid user certificate"}), 401
 
             self.users_collection.insert_one({
@@ -188,8 +202,10 @@ class Provider:
                     "token": access_token,
                     "exp": (datetime.now(timezone.utc) + timedelta(days=1)).replace(tzinfo=timezone.utc)
                 }}})
+                logger.log("PROVIDER", f"User {uid} logged in successfully.")
                 return jsonify({"access_token": access_token}), 200
-
+            
+            logger.error(f"Invalid credentials for user {uid}.")
             return jsonify({"message": "Invalid credentials"}), 401
 
         @self.app.route('/register_agent', methods=['POST'])
@@ -215,17 +231,20 @@ class Provider:
             # Validate user
             user = self.users_collection.find_one({"uid": uid})
             if not user:
+                logger.error(f"User {uid} not found.")
                 return jsonify({"message": "User not found"}), 404
             
             # Make sure that the user has been recently authenticated
             usr_record = self.users_collection.find_one({"uid": uid, "auth_tokens.token": user_jwt})
             if not usr_record:
+                logger.error(f"User {uid} not authenticated.")
                 return jsonify({"message": "User not authenticated"}), 401
             
             # Check that the authentication token is valid and not expired
             now = datetime.now(timezone.utc)
             exp = usr_record["auth_tokens"][0]["exp"].replace(tzinfo=timezone.utc)
             if now > exp:
+                logger.error(f"User {uid} token expired.")
                 return jsonify({"message": "Token expired."}), 401
 
             # ========================================================================
@@ -238,14 +257,17 @@ class Provider:
             application = data.get("application")
             aid = application.get("aid")
             if not aid:
+                logger.error(f"Agent aid not provided.")
                 return jsonify({"message": "Agent aid not provided"}), 400
 
             # Make sure that the aid is in the right format.
             if not self.check_aid(aid):
+                logger.error(f"Invalid agent aid format.")
                 return jsonify({"message": "Invalid agent aid format"}), 400
             
             # Reject if aid is already being used by another agent.
             if self.agents_collection.find_one({"aid": aid}):
+                logger.error(f"Agent {aid} already exists.")
                 return jsonify({"message": f'Agent "{aid}" already exists.'}), 401
 
             
@@ -277,6 +299,7 @@ class Provider:
             try:
                 self.CA.verify(agent_cert)
             except:
+                logger.error(f"Invalid agent certificate.")
                 return jsonify({"message": "Invalid agent certificate"}), 401
             # Extract the aagent's public signing key 
             pk_a_bytes = agent_cert.public_key().public_bytes(
@@ -308,6 +331,7 @@ class Provider:
                     str(block).encode("utf-8")
                 )
             except:
+                logger.error(f"Invalid agent signature.")
                 return jsonify({"message": "Invalid agent signature"}), 401
             
             # Extract the one-time keys.
@@ -324,21 +348,26 @@ class Provider:
                         otk
                     )
                 except:
+                    logger.error(f"Invalid one-time key signature.")
                     return jsonify({"message": "Invalid one-time key signature"}), 401
             
             # Check if any of the keys are being reused:
             if self.agents_collection.find_one({"agent_cert": agent_cert_bytes}):
+                logger.error(f"Agent certificate already in use.")
                 return jsonify({"message": "Agent certificate already in use"}), 401
             if self.agents_collection.find_one({"pac": pac_bytes}):
+                logger.error(f"Access control key already in use.")
                 return jsonify({"message": "Access control key already in use"}), 401
             for otk in otks_bytes:
                 if self.agents_collection.find_one({"one_time_keys": {"$elemMatch": {"$eq": otk}}}):
+                    logger.error(f"One-time key already in use.")
                     return jsonify({"message": "One-time key already in use"}), 401
 
             # Check the agent's contact rulebook:
             contact_rulebook = application.get("contact_rulebook", [])
             # Check if the rulebook is in the correct format.
             if not self.check_rulebook(contact_rulebook):
+                logger.error(f"Invalid contact rulebook format.")
                 return jsonify({"message": "Invalid contact rulebook format"}), 400
 
             # ========================================================================
@@ -361,6 +390,7 @@ class Provider:
             })
             # Pop the JWT from the user's record so that it cannot be reused for other purposes.
             self.users_collection.update_one({"uid": uid}, {"$pull": {"auth_tokens": {"token": user_jwt}}})
+            logger.log("PROVIDER", f"Agent {aid} registered successfully.")
             return jsonify({"message": "Agent registered successfully"}), 201
 
         @self.app.route('/lookup', methods=['POST'])
@@ -384,14 +414,17 @@ class Provider:
             # Get the agent's contact rulebook:
             # Check if the agent is allowed to be contacted by the requesting agent.
             if agent_metadata is None:
+                logger.error(f"Agent {t_aid} not found.")
                 return jsonify({"message":"Agent not found."}), 404
             # Check if the agent is allowed to be contacted by the requesting agent.
             contact_rulebook = agent_metadata.get("contact_rulebook", [])
             if not self.is_allowed_to_contact(contact_rulebook, t_aid):
+                logger.error(f"Agent {t_aid} not allowed to be contacted.")
                 return jsonify({"message":"Agent not allowed to be contacted."}), 403
             
             user_metadata = self.users_collection.find_one({"uid" : t_aid.split(":")[0]})
             if user_metadata is None:
+                logger.error(f"Cannot find agent owner with uid: {t_aid.split(':')[0]}.")
                 return jsonify({"message":"Cannot find agent owner."}), 404
             # Include the user's public signing key in the response
             crt_u_bytes = user_metadata.get("crt_u")
@@ -401,7 +434,11 @@ class Provider:
             agent_metadata.pop("one_time_key_sigs", None)
             # Remove the contact rulebook from the response
             agent_metadata.pop("contact_rulebook", None)
-
+            # Remove other redundant information from the response
+            agent_metadata.pop("_id", None)
+            agent_metadata.pop("aid", None)
+            agent_metadata.pop("IP", None)
+            agent_metadata.pop("agent_cert", None)
             return jsonify(agent_metadata), 200
     
         @self.app.route('/access', methods=['POST'])
@@ -416,14 +453,27 @@ class Provider:
             The response will include the one-time key and the user's identity key
             along with all other relevant cryptographic material of the receiving agent.
 
+            # TODO: this is wrong and it needs to be fixed. We need tha aid of who is accessing
+            the agent, not the just t_aid. The t_aid is the target agent ID of which we need to
+            check the rulebook.
+
             TODO: This function is inneficient and is not scalable because it is fetching ALL
             the one time keys from the database. Only the last one should be fetched.
             """
             data = request.json
-            t_aid = data.get("t_aid", None)
+            i_aid = data.get("i_aid", None) # the initiating agent
+            t_aid = data.get("t_aid", None) # the receiving agent
+            if not self.check_aid(t_aid):
+                logger.error(f"Invalid agent ID format.")
+                return jsonify({"message":f"Invalid agent ID: {t_aid} format."}), 400
+            if not self.check_aid(i_aid):
+                logger.error(f"Invalid agent ID format.")
+                return jsonify({"message":f"Invalid agent ID: {i_aid} format."}), 400
+            uid = t_aid.split(":")[0]
 
-            user_metadata = self.users_collection.find_one({"uid" : t_aid.split(":")[0]})
+            user_metadata = self.users_collection.find_one({"uid" : uid})
             if user_metadata is None:
+                logger.error(f"Cannot find agent owner with uid: {uid}.")
                 return jsonify({"message":"Cannot find agent owner."}), 404
 
             # CONTACT POLCY ENFORCEMENT:
@@ -431,10 +481,12 @@ class Provider:
             agent_metadata_before = self.agents_collection.find_one({"aid" : t_aid})
             # Check if the agent is allowed to be contacted by the requesting agent.
             if agent_metadata_before is None:
+                logger.error(f"Agent {t_aid} not found.")
                 return jsonify({"message":"Agent not found."}), 404
-            # Check if the agent is allowed to be contacted by the requesting agent.
+            # Check if the initiating agent is allowed to be contacted by the requesting agent.
             contact_rulebook = agent_metadata_before.get("contact_rulebook", [])
-            if not self.is_allowed_to_contact(contact_rulebook, t_aid):
+            if not self.is_allowed_to_contact(contact_rulebook, i_aid):
+                logger.error(f"Agent {t_aid} not allowed to be contacted.")
                 return jsonify({"message":"Agent not allowed to be contacted."}), 403
 
             agent_metadata = self.agents_collection.find_one_and_update(
@@ -447,6 +499,7 @@ class Provider:
 
             # If agent not found or no keys left, return 404
             if agent_metadata is None:
+                logger.error(f"Agent {t_aid} not found or no keys left.")
                 return jsonify({"message": "Agent not found or no keys left."}), 404
 
             # Include the user's identity key in the response
@@ -457,13 +510,18 @@ class Provider:
             agent_metadata['one_time_key_sigs'] = [agent_metadata['one_time_key_sigs'][-1]]
             # Remove the contact rulebook from the response
             agent_metadata.pop("contact_rulebook", None)
+            agent_metadata.pop("_id", None)
 
             return jsonify(agent_metadata), 200
     
-    
     def run(self):
         """Runs the web server."""
-        self.app.run(host=self.host, port=self.port, ssl_context=self.ssl_context)
+         # Set up SSL context with mTLS
+        context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        context.load_cert_chain(certfile=self.ssl_context[0], keyfile=self.ssl_context[1])  # Server's cert and key
+        context.load_verify_locations(cafile=saga.config.CA_WORKDIR+"/ca.crt")  # CA that issued client certs
+        context.verify_mode = ssl.CERT_REQUIRED  # Force either client (user or agent) to present a valid cert
+        self.app.run(host=self.host, port=self.port, ssl_context=context)
 
 
 # Run the provider

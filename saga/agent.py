@@ -26,18 +26,6 @@ Agent class for the SAGA system.
 """
 import saga.crypto as sc
 
-def get_provider_cert():
-    """
-    This is a 'smarter' way to get the provider's certificate. This function uses the requests library
-    to get the certificate of the server.
-    """
-    provider_url = saga.config.PROVIDER_URL
-    response = requests.get(provider_url+"/certificate", verify=saga.config.CA_CERT_PATH)
-    cert_bytes = base64.b64decode(response.json().get('certificate'))
-    cert = sc.bytesToX509Certificate(cert_bytes)
-    
-    return cert
-
 def get_agent_material(dir_path: Path):
     # Check if dir exists:
     if not os.path.exists(dir_path):
@@ -110,15 +98,6 @@ class Agent:
         self.IP = material.get("IP")
         self.port = material.get("port")
 
-        # Provider Identity
-        # Setup the SAGA CA:
-        self.CA = get_SAGA_CA()
-        # Download provider certificate
-        provider_cert = get_provider_cert()
-        # Verify the provider certificate:
-        self.CA.verify(provider_cert) # if the verification fails an exception will be raised.
-        self.PK_Prov = provider_cert.public_key()
-
         # TLS signing keys for the Agent:
         self.sk_a = sc.bytesToPrivateEd25519Key(
             base64.b64decode(material.get("secret_signing_key"))
@@ -177,13 +156,33 @@ class Agent:
         # Previously contacted agents:
         self.previously_contacted_agents = {}
 
-        # Print:
-        if DEBUG:
-            for key, value in self.__dict__.items():
-                print(f"{key}: {value}")
+        # Provider Identity
+        # Setup the SAGA CA:
+        self.CA = get_SAGA_CA()
+        # Download provider certificate
+        provider_cert = self.get_provider_cert()
+        # Verify the provider certificate:
+        self.CA.verify(provider_cert) # if the verification fails an exception will be raised.
+        self.PK_Prov = provider_cert.public_key()
+
+    def get_provider_cert(self):
+        """
+        This is a 'smarter' way to get the provider's certificate. This function uses the requests library
+        to get the certificate of the server.
+        """
+        provider_url = saga.config.PROVIDER_URL
+        response = requests.get(provider_url+"/certificate", verify=saga.config.CA_CERT_PATH, cert=(
+            self.workdir+"agent.crt", self.workdir+"agent.key"
+        ))
+        cert_bytes = base64.b64decode(response.json().get('certificate'))
+        cert = sc.bytesToX509Certificate(cert_bytes)
+        
+        return cert
 
     def lookup(self, t_aid):
-        response = requests.post(f"{saga.config.PROVIDER_URL}/lookup", json={'t_aid': t_aid}, verify=saga.config.CA_CERT_PATH) 
+        response = requests.post(f"{saga.config.PROVIDER_URL}/lookup", json={'t_aid': t_aid}, verify=saga.config.CA_CERT_PATH, cert=(
+            self.workdir+"agent.crt", self.workdir+"agent.key"
+        )) 
         if response.status_code == 200:
             data = response.json()
             # Convert extended-json dict to python dict:
@@ -195,7 +194,9 @@ class Agent:
             return None        
         
     def access(self, t_aid):
-        response = requests.post(f"{saga.config.PROVIDER_URL}/access", json={'t_aid': t_aid}, verify=saga.config.CA_CERT_PATH) 
+        response = requests.post(f"{saga.config.PROVIDER_URL}/access", json={'i_aid':self.aid, 't_aid': t_aid}, verify=saga.config.CA_CERT_PATH, cert=(
+            self.workdir+"agent.crt", self.workdir+"agent.key"
+        )) 
         if response.status_code == 200:
             data = response.json()
             # Convert extended-json dict to python dict:
@@ -690,12 +691,17 @@ class Agent:
             # Rules are in the form of:
             # alice@her_email.com:bobafet
             components = rule.split(":")
+            if len(components) == 1:
+                if components[0] != "*":
+                    logger.error(f"Invalid AC rule {rule} format. Expected format: <aid> = <uid>:<name>")
+                    return False
+                continue
             if len(components) != 2:
-                logger.error("Invalid AC rule format. Expected format: <aid> = <uid>:<name>")
+                logger.error(f"Invalid AC rule {rule} format. Expected format: <aid> = <uid>:<name>")
                 return False
             uid, name = components[0], components[1]
             if not isinstance(uid, str) or not isinstance(name, str):
-                logger.error("Invalid AC rule format. Expected format: <aid> = <uid>:<name>. Both the uid and aid must be strings.")
+                logger.error(f"Invalid AC rule {rule} format. Expected format: <aid> = <uid>:<name>. Both the uid and aid must be strings.")
                 return False
         return True
 
@@ -755,7 +761,6 @@ class Agent:
             data = conn.recv(MAX_BUFFER_SIZE)
             if data:
                     try:
-
                         # Decode and parse JSON data
                         received_msg = json.loads(data.decode('utf-8'))
 
@@ -795,10 +800,7 @@ class Agent:
                         pk_u = i_agent_user_cert.public_key()
                     
                         # Verify the agent's identity:
-                        i_agent_cert_bytes = i_agent_material.get("agent_cert", None)
-                        i_agent_cert = sc.bytesToX509Certificate(
-                            i_agent_cert_bytes 
-                        )
+                        i_agent_cert = sc.bytesToX509Certificate(sc.der_to_pem(conn.getpeercert(binary_form=True)))
                         if i_agent_cert is None:
                             logger.error("No valid certificate found.")
                             raise Exception("No valid certificate found.")
@@ -893,6 +895,7 @@ class Agent:
                             # Generate the token:
                             enc_token_bytes = self.generate_token(i_pac, SDHK)
                             enc_token_str = base64.b64encode(enc_token_bytes).decode('utf-8')
+                            # TODO: change the 
                             token_response = {"token": enc_token_str}
                             logger.log("ACCESS", f"Generated token: {enc_token_str}")
 

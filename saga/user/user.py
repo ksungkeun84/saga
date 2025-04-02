@@ -10,13 +10,15 @@ import json
 from saga.logger import Logger as logger
 
 
-def get_provider_cert():
+def get_provider_cert(email):
     """
     This is a 'smarter' way to get the provider's certificate. This function uses the requests library
     to get the certificate of the server.
     """
     provider_url = saga.config.PROVIDER_URL
-    response = requests.get(provider_url+"/certificate", verify=saga.config.CA_CERT_PATH)
+    response = requests.get(provider_url+"/certificate", verify=saga.config.CA_CERT_PATH, cert=(
+        saga.config.USER_WORKDIR+"/keys/"+email+".crt", saga.config.USER_WORKDIR+"/keys/"+email+".key"
+    ))
     cert_bytes = base64.b64decode(response.json().get('certificate'))
     cert = sc.bytesToX509Certificate(cert_bytes)
     
@@ -24,13 +26,7 @@ def get_provider_cert():
 
 # Instanciate the CA object:
 CA = get_SAGA_CA()
-
-# Provider state:
-# Open tls/localhost.crt and read the Provider public key
-PROVIDER_CERT = get_provider_cert()
-# Verify the provider certificate:
-CA.verify(PROVIDER_CERT) # if the verification fails an exception will be raised.
-PK_Prov = PROVIDER_CERT.public_key()
+global PROVIDER_CERT, PK_Prov
 
 # User state:
 provider_tokens = []
@@ -41,6 +37,7 @@ state['agents'] = {}
 
 
 def register(email=None, password=None):
+
     email = input("Enter email: ") if email is None else email
     password = input("Enter password: ") if password is None else password
 
@@ -56,6 +53,13 @@ def register(email=None, password=None):
         config=custom_user_config
     )
 
+    # Save the keys to disk:
+    if not os.path.exists(saga.config.USER_WORKDIR+"/keys"):
+        os.mkdir(saga.config.USER_WORKDIR+"/keys")
+    logger.log("CRYPTO", f"Saving user keys to {saga.config.USER_WORKDIR}/keys/{email}")
+    sc.save_ed25519_keys(saga.config.USER_WORKDIR+"/keys/"+email, sk_u, pk_u)
+    sc.save_x509_certificate(saga.config.USER_WORKDIR+"/keys/"+email, user_cert)
+
     response = requests.post(f"{saga.config.PROVIDER_URL}/register", json={
         'uid': email, # uid
         'password': password, # pwd 
@@ -64,7 +68,9 @@ def register(email=None, password=None):
         'crt_u': base64.b64encode(
             user_cert.public_bytes(sc.serialization.Encoding.PEM)
         ).decode("utf-8")
-    }, verify=saga.config.CA_CERT_PATH)
+    }, verify=saga.config.CA_CERT_PATH, cert=(
+        saga.config.USER_WORKDIR+"/keys/"+email+".crt", saga.config.USER_WORKDIR+"/keys/"+"k"+".key"
+    ))
     
     if response.status_code == 201:
         logger.log("PROVIDER", f"User {email} registered successfully.")
@@ -75,18 +81,28 @@ def register(email=None, password=None):
             'public': pk_u,
             'private': sk_u
         }
-        # Save the keys to disk:
-        if not os.path.exists(saga.config.USER_WORKDIR+"/keys"):
-            os.mkdir(saga.config.USER_WORKDIR+"/keys")
-        logger.log("CRYPTO", f"Saving user keys to {saga.config.USER_WORKDIR}/keys/{email}")
-        sc.save_ed25519_keys(saga.config.USER_WORKDIR+"/keys/"+email, sk_u, pk_u)
-        sc.save_x509_certificate(saga.config.USER_WORKDIR+"/keys/"+email, user_cert)
+
+         # Get the provider's certificate:
+        PROVIDER_CERT = get_provider_cert(email)
+        # Verify the provider's certificate:
+        CA.verify(PROVIDER_CERT) # if the verification fails an exception will be raised.
+        PK_Prov = PROVIDER_CERT.public_key()
+    else:
+        logger.log("PROVIDER", f"User registration failed: {response.json()}")
+        # Remove the keys from disk:
+        logger.log("CRYPTO", f"Removing user keys from {saga.config.USER_WORKDIR}/keys/{email}")
+        os.remove(saga.config.USER_WORKDIR+"/keys/"+email+".key")
+        os.remove(saga.config.USER_WORKDIR+"/keys/"+email+".crt")
+        os.remove(saga.config.USER_WORKDIR+"/keys/"+email+".pub")        
 
 def login(email=None, password=None):
+    global PROVIDER_CERT, PK_Prov
     email = input("Enter email: ") if email is None else email
     password = input("Enter password: ") if password is None else password
 
-    response = requests.post(f"{saga.config.PROVIDER_URL}/login", json={'uid': email, 'password': password}, verify=saga.config.CA_CERT_PATH) 
+    response = requests.post(f"{saga.config.PROVIDER_URL}/login", json={'uid': email, 'password': password}, verify=saga.config.CA_CERT_PATH, cert=(
+        saga.config.USER_WORKDIR+"/keys/"+email+".crt", saga.config.USER_WORKDIR+"/keys/"+email+".key"
+    )) 
     if response.status_code == 200:
         token = response.json().get("access_token")
         logger.log("PROVIDER", f"User {email} logged in successfully.")
@@ -98,13 +114,21 @@ def login(email=None, password=None):
             'public': pk_u,
             'secret': sk_u
         }
+
+        # Get the provider's certificate:
+        PROVIDER_CERT = get_provider_cert(email)
+        # Verify the provider's certificate:
+        CA.verify(PROVIDER_CERT) # if the verification fails an exception will be raised.
+        PK_Prov = PROVIDER_CERT.public_key()
+
         return token
     else:
-        logger.error("USER", f"Login failed: {response.json().get('error')}")
+        logger.log("PROVIDER", f"Login failed: {response.json()}")
         return None
 
 def register_agent(name=None, device=None, IP=None, port=None, num_one_time_keys=None, contact_rulebook=None):
-    
+    global PROVIDER_CERT, PK_Prov
+
     name = input("Enter agent name: ") if name is None else name
     device = input("Enter device name: ") if device is None else device
     IP = input("Enter IP address: ") if IP is None else IP
@@ -223,7 +247,9 @@ def register_agent(name=None, device=None, IP=None, port=None, num_one_time_keys
         'uid': state['uid'], # The user's uid
         'jwt': provider_tokens[-1], # Provider's JWT
         'application': application
-    }, verify=saga.config.CA_CERT_PATH)
+    }, verify=saga.config.CA_CERT_PATH, cert=(
+        saga.config.USER_WORKDIR+"/keys/"+state['uid']+".crt", saga.config.USER_WORKDIR+"/keys/"+state['uid']+".key"
+    ))
 
     # Based on the provider's response, store the agent's cryptographic material
     if response.status_code == 201:  
@@ -257,7 +283,7 @@ def register_agent(name=None, device=None, IP=None, port=None, num_one_time_keys
         })
         spawn_agent(application)
     else:
-        logger.error("USER", f"Agent registration failed: {response.json().get('error')}")
+        logger.log("PROVIDER", f"Agent registration failed: {response.json()}")
         return None
 
 def spawn_agent(application):
