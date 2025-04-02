@@ -2,7 +2,6 @@ import fnmatch
 from flask import Flask, request, jsonify, redirect, url_for
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import create_access_token, JWTManager
-from authlib.integrations.flask_client import OAuth
 from flask_pymongo import PyMongo
 import saga.crypto as sc
 from saga.ca.CA import get_SAGA_CA
@@ -10,9 +9,6 @@ import base64
 from datetime import datetime, timezone, timedelta
 import os
 import saga.config
-
-GOOGLE_CLIENT_ID = "598128652574-bh1oes4c5f5p22su48guffi65q2bobke.apps.googleusercontent.com"
-GOOGLE_CLIENT_SECRET = "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"
 
 class Provider:
     def __init__(
@@ -36,29 +32,12 @@ class Provider:
         self.app.config["MONGO_URI"] = mongo_uri
         self.app.config["JWT_SECRET_KEY"] = jwt_secret
 
-        self.app.config['GOOGLE_CLIENT_ID'] = GOOGLE_CLIENT_ID
-        self.app.config['GOOGLE_CLIENT_SECRET'] = GOOGLE_CLIENT_SECRET
-
         # Initialize MongoDB, JWT, and Bcrypt
         self.mongo = PyMongo(self.app)
         self.jwt = JWTManager(self.app)
         self.bcrypt = Bcrypt(self.app)
 
         self.active_jwt_tokens = []
-
-        # OAuth setup
-        self.oauth = OAuth(self.app)
-        self.google = self.oauth.register(
-            name='google',
-            client_id=self.app.config['GOOGLE_CLIENT_ID'],
-            client_secret=self.app.config['GOOGLE_CLIENT_SECRET'],
-            authorize_url='https://accounts.google.com/o/oauth2/auth',
-            access_token_url='https://oauth2.googleapis.com/token',
-            access_token_params=None,
-            client_kwargs={'scope': 'openid uid profile'},
-            uthorize_params={'prompt': 'consent', 'access_type': 'offline'},
-            api_base_url='https://www.googleapis.com/oauth2/v1/',
-        )
 
         # MongoDB Collections
         self.users_collection = self.mongo.db.users
@@ -127,15 +106,17 @@ class Provider:
         """
         This function checks if the agent is allowed to contact the target agent.
         The contact rulebook is a list of strings in unix pattern format.
+        If the contact rulebook is empty, by convention, the receiving agent 
+        is not allowed to be contacted by any agent.
         """
         # Check that the t_aid is valid (correct format)
         if not self.check_aid(t_aid):
             return False
         # Check if the target agent ID is in the contact rulebook
         for rule in contact_rulebook:
-            if not fnmatch.fnmatch(t_aid, rule):
-                return False
-        return True
+            if fnmatch.fnmatch(t_aid, rule):
+                return True
+        return False
 
     def _register_routes(self):
         """Registers all Flask routes for the provider."""
@@ -210,24 +191,6 @@ class Provider:
                 return jsonify({"access_token": access_token}), 200
 
             return jsonify({"message": "Invalid credentials"}), 401
-
-        @self.app.route('/oauth_login')
-        def oauth_login():
-            return self.google.authorize_redirect(url_for('authorize', _external=True))
-
-        @self.app.route('/oauth_callback')
-        def oauth_callback():
-            token = self.google.authorize_access_token()
-            user_info = self.google.get("userinfo").json()
-            
-            uid = user_info["id"]
-            user = self.users_collection.find_one({"uid": uid})
-
-            if not user:
-                self.users_collection.insert_one({"uid": uid})
-
-            access_token = create_access_token(identity=uid)
-            return jsonify({"access_token": access_token})
 
         @self.app.route('/register_agent', methods=['POST'])
         def register_agent():

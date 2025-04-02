@@ -58,5 +58,5 @@ agents:
       ip: 192.168.2.59
       port: 7000
       device_name: gamma
-    contact_rulebook: []
+    contact_rulebook: ["*"]
     num_one_time_keys: 100
