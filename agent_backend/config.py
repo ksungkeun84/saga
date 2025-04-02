@@ -61,6 +61,12 @@ class AgentConfig(Serializable):
     """API key for the agent, if using an API model."""
     model_type: Optional[str] =  "TransformersModel"
     """Type of backbone model for the agent. One of: TransformersModel, HfApiModel (for now; will add support later)"""
+    base_agent_type: Optional[str] = "CodeAgent"
+    """Wrapper class for the agent. Use one of: ['CodeAgent', 'ToolCallingAgent'] (for now; may add support later)"""
+    contact_rulebook: Optional[List[str]] = field(default_factory=list)
+    """Contact rule-book for this particular agent (who can contact it, etc.)"""
+    num_one_time_keys: Optional[int] = 100
+    """Number of one-time-keys to generate for this agent. Defaults to 100"""
     def __post_init__(self):
         if self.model_type in ["OpenAIServerModel"]:
             # Make sure api_base and api_key are set

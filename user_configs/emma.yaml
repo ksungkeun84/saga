@@ -43,6 +43,7 @@ media_preferences:
 agents:
   - name: "email_calendar_agent"
     model_type: "OpenAIServerModel"
+    base_agent_type: "ToolCallingAgent"
     api_base: "http://192.168.2.59:8000/v1"
     description: "An agent that can send and receive emails and interact with the user's calendar."
     model: "Qwen/Qwen2.5-72B-Instruct"
