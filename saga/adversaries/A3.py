@@ -62,10 +62,6 @@ class DummyAgent:
         "I think we are alone in the universe.",
         "I think we are not alone in the universe.",
         'Faxxx',
-        "<TASK_FINISHED>",
-        "<TASK_FINISHED>",
-        "<TASK_FINISHED>",
-        "<TASK_FINISHED>"
     ]
 
     def __init__(self):
@@ -78,7 +74,13 @@ class DummyAgent:
         return None, random.choice(DummyAgent.vocab)
 
 
-class Agent:
+class A3:
+    # =======================================================================
+    # ADVERSARIAL AGENT 3: An adversarial agent contacts the victim agent 
+    # with the TLS public keys, but expired access control token. In this 
+    # case, the victim agent establishes the TLS connection, but should not 
+    # allow subsequent interaction with the adversarial agent.
+    # =======================================================================
     def __init__(self, workdir, material, local_agent = None):
 
         self.workdir = workdir
@@ -325,10 +327,11 @@ class Agent:
             return None
         if not self.received_token_is_valid(token):
             with self.received_tokens_lock:
-                # remove the token from the received tokens:
-                del self.received_tokens[token]
-                # remove the token from the aid_to_token dict:
-                del self.aid_to_token[r_aid]
+                # # remove the token from the received tokens:
+                # del self.received_tokens[token]
+                # # remove the token from the aid_to_token dict:
+                # del self.aid_to_token[r_aid]
+                logger.log("ADVERSARY", "Invalid token is going to be re-used.")
             return None
         return token
 
@@ -364,11 +367,12 @@ class Agent:
                 logger.log("AGENT", "Task deemed complete from initiating side.")
                 # Invalidate the token:
                 with self.received_tokens_lock:
-                    # remove the token from the received tokens:
-                    del self.received_tokens[token]
-                    # remove the token from the aid_to_token dict:
-                    del self.aid_to_token[r_aid]
-                    logger.log("ACCESS", "Token invalidated from the initiating side.")
+                    # # remove the token from the received tokens:
+                    # del self.received_tokens[token]
+                    # # remove the token from the aid_to_token dict:
+                    # del self.aid_to_token[r_aid]
+                    logger.log("ADVERSARY", "Token is going to be reused.")
+
                 return True
             # Receive response:
             response = conn.recv(MAX_BUFFER_SIZE)
@@ -384,11 +388,12 @@ class Agent:
                 logger.log("AGENT", "Task deemed complete from receiving side.")
                 # Invalidate the token:
                 with self.received_tokens_lock:
-                    # remove the token from the received tokens:
-                    del self.received_tokens[token]
-                    # remove the token from the aid_to_token dict:
-                    del self.aid_to_token[r_aid]
+                    # # remove the token from the received tokens:
+                    # del self.received_tokens[token]
+                    # # remove the token from the aid_to_token dict:
+                    # del self.aid_to_token[r_aid]
                     logger.log("ACCESS", "Token invalidated from the receiving side.")
+                    logger.log("ADVERSARY", "Token is going to be reused.")
                 return False
             
             # Process message:

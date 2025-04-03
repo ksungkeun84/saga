@@ -78,7 +78,11 @@ class DummyAgent:
         return None, random.choice(DummyAgent.vocab)
 
 
-class Agent:
+class A6:
+    # =======================================================================
+    # ADVERSARIAL AGENT 6: An adversarial agent uses token that was obtained 
+    # from agent $A_1$ to access another agent $A_2$ of the same user $U$.
+    # =======================================================================
     def __init__(self, workdir, material, local_agent = None):
 
         self.workdir = workdir
@@ -468,13 +472,29 @@ class Agent:
                     logger.log("ACCESS", "Token invalidated from the receiving side.")
                 return True
 
+    def steal_token(self, token_path: str):
+        """
+        Steal a token from the given path.
+        """
+        # Check if the token file exists:
+        if not os.path.exists(token_path):
+            logger.error(f"Token file {token_path} does not exist.")
+            return None
+
+        # Read the token file:
+        with open(token_path, "r") as f:
+            token = f.read()
+        
+        return token
+
     def connect(self, r_aid, message: str):
 
         # Get everything you need to reach the receiving agent from the provider:
 
         # Check if you have a token:
         logger.log("ACCESS", f"Checking if a token exists for {r_aid}.")
-        token = self.retrieve_valid_token(r_aid)
+        logger.log("ADVERSARY", "WILL USE EXISTING TOKEN THAT WAS GIVEN TO ANOTHER AGENT")
+        token = self.steal_token(self.workdir+"notmy.token")
         if token is not None:
             # Fetch agent information from memory:
             logger.log("ACCESS", f"Found token for {r_aid}. Will use it.")
@@ -483,7 +503,7 @@ class Agent:
             # Fetch agent information from the provider:
             logger.log("ACCESS", f"No valid token found for {r_aid}.")
             logger.log("ACCESS", f"Requesting access to {r_aid} via the Provider.")
-            r_agent_material = self.access(r_aid)
+        r_agent_material = self.access(r_aid)
 
         if r_agent_material is None:
             logger.log("ACCESS", f"Access to {r_aid} denied.")

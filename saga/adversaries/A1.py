@@ -78,7 +78,12 @@ class DummyAgent:
         return None, random.choice(DummyAgent.vocab)
 
 
-class Agent:
+class A1:
+    # =======================================================================
+    # ADVERSARIAL AGENT 1: An adversarial agent contacts the victim agent 
+    # without access to its TLS public keys. The victim agent should 
+    # immediately reject the TLS connection establishment. 
+    # =======================================================================
     def __init__(self, workdir, material, local_agent = None):
 
         self.workdir = workdir
@@ -573,7 +578,9 @@ class Agent:
         context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
         context.options |= ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1 | ssl.OP_NO_TLSv1_2  # TLS 1.3 only
         # Load the self-signed certificate and private key
-        context.load_cert_chain(certfile=self.workdir + "agent.crt", keyfile=self.workdir + "agent.key")
+        
+        #context.load_cert_chain(certfile=self.workdir + "agent.crt", keyfile=self.workdir + "agent.key")
+        logger.log("ADVERSARY", f"Connecting to {r_aid} *without* TLS credentials.")
         # Load the CA certificate for verification:    
         context.load_verify_locations(saga.config.CA_CERT_PATH)
 
@@ -862,12 +869,11 @@ class Agent:
                             # The initiating agent does not have a token. 
                             logger.log("ACCESS", f"No valid received token found. For {i_aid}. Generating new one.")
                             
-                            # The agent must have a otk:
-                            i_otk_json = received_msg.get("otk", None)
-                            if i_otk_json is None:
-                                logger.error("Acces control failed: no one-time key provided from initiating agent.")
-                                raise Exception("Acces control failed: no one-time key provided from initiating agent.")
-                            i_otk_bytes = base64.b64decode(i_otk_json)
+                            # The agent must have a otk: 
+                            i_otk_bytes = base64.b64decode(received_msg.get("otk", None))
+                            if i_otk_bytes is None:
+                                logger.error("Acces control failed: no otk provided from initiating agent.")
+                                raise Exception("Acces control failed: no otk provided.")
                             
                             with self.otks_lock:
                                 # Look for the otk-sotk pair in the otks struct:

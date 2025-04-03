@@ -78,7 +78,7 @@ class DummyAgent:
         return None, random.choice(DummyAgent.vocab)
 
 
-class Agent:
+class A2:
     def __init__(self, workdir, material, local_agent = None):
 
         self.workdir = workdir
@@ -608,7 +608,9 @@ class Agent:
                             raise Exception(f"ERROR: {r_aid} ONE TIME KEY VERIFICATION FAILED. UNSAFE CONNECTION.")
 
                         # Prepare JSON message
-                        request_dict['otk'] = base64.b64encode(r_otk).decode("utf-8")
+
+                        #request_dict['otk'] = base64.b64encode(r_otk).decode("utf-8")
+                        logger.log("ADVERSARY", f"Contacting {r_aid} *without* OTK.")
                     else:
                         # If a token is found, the initiating agent can send 
                         # it to the receiving agent.                        
@@ -862,12 +864,11 @@ class Agent:
                             # The initiating agent does not have a token. 
                             logger.log("ACCESS", f"No valid received token found. For {i_aid}. Generating new one.")
                             
-                            # The agent must have a otk:
-                            i_otk_json = received_msg.get("otk", None)
-                            if i_otk_json is None:
-                                logger.error("Acces control failed: no one-time key provided from initiating agent.")
-                                raise Exception("Acces control failed: no one-time key provided from initiating agent.")
-                            i_otk_bytes = base64.b64decode(i_otk_json)
+                            # The agent must have a otk: 
+                            i_otk_bytes = base64.b64decode(received_msg.get("otk", None))
+                            if i_otk_bytes is None:
+                                logger.error("Acces control failed: no otk provided from initiating agent.")
+                                raise Exception("Acces control failed: no otk provided.")
                             
                             with self.otks_lock:
                                 # Look for the otk-sotk pair in the otks struct:

@@ -47,25 +47,7 @@ class DummyAgent:
     Dummy agent for networkig testing purposes. Simulates a dumb agent that thinks and returns a ranom response.
     """
     vocab = [
-        "Hi",
-        "Hello",
-        "Yeah this makes sense.",
-        "I think I understand.",
-        "I love apples",
-        "I don't know.",
-        "I'm not sure.",
-        "I'm sorry, I don't understand.",
-        "I'm sorry, I can't do that.",
-        "Do you think that we have purpose?",
-        "What is the meaning of life?",
-        "Do you think we are alone in the universe?",
-        "I think we are alone in the universe.",
-        "I think we are not alone in the universe.",
-        'Faxxx',
-        "<TASK_FINISHED>",
-        "<TASK_FINISHED>",
-        "<TASK_FINISHED>",
-        "<TASK_FINISHED>"
+        "MALICIOUS QUERY"
     ]
 
     def __init__(self):
@@ -78,7 +60,14 @@ class DummyAgent:
         return None, random.choice(DummyAgent.vocab)
 
 
-class Agent:
+class A5:
+    # =======================================================================
+    # ADVERSARIAL AGENT 5: An adversarial agent contacts the victim agent 
+    # with the TLS public keys and a valid access control token. In this 
+    # case, the victim agent allows the communication, but there will be a 
+    # limited window of vulnerability (until the access control token expires 
+    # or the communication reaches the quota). 
+    # =======================================================================
     def __init__(self, workdir, material, local_agent = None):
 
         self.workdir = workdir

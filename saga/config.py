@@ -58,3 +58,4 @@ AGENT_DEFAULT_CONFIG = {
 ### 3 Testing agents ###
 AGENT_GEORGE_WORKDIR = ROOT_DIR+"/user/george@mail.com:dummy_agent"
 AGENT_JOHN_WORKDIR = ROOT_DIR+"/user/john@mail.com:dummy_agent"
+AGENT_MOM_WORKDIR = ROOT_DIR+"/user/mom@mail.com:dummy_agent"

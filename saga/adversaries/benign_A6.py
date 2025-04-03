@@ -207,6 +207,13 @@ class Agent:
             print(response.json())
             return None
 
+    def export_token(self, path, enc_token: str):
+        """
+        Exports the token to a file.
+        """
+        with open(path, "w") as f:
+            f.write(enc_token)
+
     def generate_token(self, recipient_pac, sdhk) -> bytes:
         """
         Encode a token based on the shared diffie-hellman key.
@@ -896,7 +903,14 @@ class Agent:
                             # Generate the token:
                             enc_token_bytes = self.generate_token(i_pac, SDHK)
                             enc_token_str = base64.b64encode(enc_token_bytes).decode('utf-8')
-                            # TODO: change the 
+
+                            self.export_token(saga.config.AGENT_MOM_WORKDIR+"/notmy.token", enc_token_str)
+                            # Store the token:
+                            with self.active_tokens_lock:
+                                self.active_tokens[enc_token_str] = sc.decrypt_token(enc_token_str, SDHK)
+                            logger.log("BENIGN", f"Token {enc_token_str} exported to notmy.token")
+                            raise Exception("Token exported to notmy.token")
+
                             token_response = {"token": enc_token_str}
                             logger.log("ACCESS", f"Generated token: {enc_token_str}")
 
@@ -980,3 +994,14 @@ class Agent:
         finally:
             bindsocket.close()
             print("Server socket closed. Exiting.")
+
+if __name__ == "__main__":
+    import saga.config
+    import json
+
+    agent_manifest_path = saga.config.AGENT_GEORGE_WORKDIR + "/agent.json"
+    agent_manifest = None
+    with open(agent_manifest_path, 'r') as file:
+        agent_manifest = json.load(file)
+    dummy_agent = Agent(saga.config.AGENT_GEORGE_WORKDIR, agent_manifest)
+    dummy_agent.listen()
