@@ -60,6 +60,12 @@ class MeetingScheduleTest(Test):
                     if event["time_from"] < datetime.now():
                         return False  # Meeting is in the past
 
+                    # Make sure meeting is for an hour
+                    meeting_duration = (event["time_to"] - event["time_from"]).total_seconds() / 3600
+                    if meeting_duration != 1:
+                        print(f"Meeting duration was {meeting_duration}, expected 1 hour")
+                        return False  # Meeting is not exactly one hour
+
                     return True  # Meeting is successfully scheduled
 
         return False  # No matching event found in both calendars
@@ -80,9 +86,6 @@ def main(mode, config_path, other_user_config_path=None):
                   material=material,
                   local_agent=local_agent)
     
-    # agent.locarun(4.991452365949993)
-    # exit(0)
-
     if mode == "listen":
         agent.listen()
     else:
@@ -91,7 +94,7 @@ def main(mode, config_path, other_user_config_path=None):
         other_agent_credentials_endpoint = f"{other_user_config.email}:{other_user_config.agents[AGENT_FOCUS].name}"
         print(other_agent_credentials_endpoint)
         # agent.connect(other_agent_credentials_endpoint, "Please simply repeat '<TASK_FINISHED>'")
-        task = "Let's find some time to meet next week. Tell me what slot works for you and let's book our calendars for then."
+        task = f"Let's find some time to discuss our NDSS submission. Are you available for an hour next week?"
         agent.connect(other_agent_credentials_endpoint, task)
 
         # Create test object
