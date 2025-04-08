@@ -55,6 +55,9 @@ AGENT_DEFAULT_CONFIG = {
     "ORGANIZATION_NAME": "SAGA"
 }
 
+### TOKEN SETTINGS ###
+Q_MAX = 10
+
 ### 3 Testing agents ###
 AGENT_GEORGE_WORKDIR = ROOT_DIR+"/user/george@mail.com:dummy_agent"
 AGENT_JOHN_WORKDIR = ROOT_DIR+"/user/john@mail.com:dummy_agent"

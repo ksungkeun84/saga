@@ -18,7 +18,7 @@ from saga.ca.CA import get_SAGA_CA
 
 DEBUG = False
 MAX_BUFFER_SIZE = 4096
-MAX_QUERIES = 50
+MAX_QUERIES = 100
 """"
 
 Agent class for the SAGA system.
@@ -220,7 +220,7 @@ class Agent:
         expiration_timestamp = issue_timestamp + timedelta(hours=1)
 
         # Communication quota
-        communication_quota = 5  # Example quota
+        communication_quota = saga.config.Q_MAX  # Example quota
 
         # Token dictionary
         token_dict = {
