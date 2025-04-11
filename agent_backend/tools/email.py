@@ -49,13 +49,22 @@ class LocalEmailClientTool(BaseTool):
 
     def search_emails_by_query(self, query: str):
         """
-        This method searches for emails in the inbox that match the query.
+        This method searches for emails in the inbox that match the query across all fields.
         Returns a list of dictionaries containing the email details.
         """
         db = self.client.get_database(self.tool_name)
         collection = db.get_collection(self.user_email + "_inbox")
-        # Search for emails that match the query
-        emails = collection.find({"$text": {"$search": query}})
+        
+        # Search for emails where any field matches the query
+        emails = collection.find({
+            "$or": [
+                {"from": {"$regex": query, "$options": "i"}},
+                {"subject": {"$regex": query, "$options": "i"}},
+                {"body": {"$regex": query, "$options": "i"}},
+                {"time:": {"$regex": query, "$options": "i"}}
+            ]
+        })
+        
         # Convert to list of dictionaries
         emails = list(emails)
         # Remove objectid : we only need from/subject/body/time
@@ -74,8 +83,8 @@ class LocalEmailClientTool(BaseTool):
 
         # TODO: Check if receipent exists
         # if to + "_inbox" not in db.list_collection_names():
-            # return False
-        collection_recipient = db.get_collection(to + "_inbox")
+        #     print(db.list_collection_names())
+        #     raise ValueError(f"Recipient inbox for {to} does not exist")
 
         email = {
             "from": f"{self.user_name} <{self.user_email}>",
@@ -88,5 +97,6 @@ class LocalEmailClientTool(BaseTool):
         # Insert into self sent collection
         collection_self.insert_one(email)
         # Insert into recipient inbox collection
+        collection_recipient = db.get_collection(to + "_inbox")
         collection_recipient.insert_one(email)
         return True

@@ -24,14 +24,17 @@ class BaseTool:
     def seed_data(self, data: List[dict]):
         db = self.client.get_database(self.tool_name)
 
-    def _get_name_from_field(self, text: str) -> str:
+    def _get_email_from_field(self, text: str) -> str:
         """
-            Field will be in the format "name <email>"
+            Field will be in the format "name <email>", or just the email
             We want to extract the email address from this field
         """
+        if not ("<" in text and ">" in text):
+            return text.strip()
+
         return text.split("<")[1].split(">")[0]
 
-    def _get_email_from_field(self, text: str) -> str:
+    def _get_name_from_field(self, text: str) -> str:
         """
             Field will be in the format "name <email>"
             We want to extract the name from this field

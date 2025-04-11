@@ -1,4 +1,4 @@
-from smolagents import CodeAgent, HfApiModel, TransformersModel, OpenAIServerModel, MultiStepAgent
+from smolagents import CodeAgent, HfApiModel, TransformersModel, OpenAIServerModel, MultiStepAgent, ToolCallingAgent
 from agent_backend.config import AgentConfig, UserConfig
 import yaml
 from typing import List
@@ -11,6 +11,7 @@ from saga.config import ROOT_DIR
 
 from agent_backend.tools.email import LocalEmailClientTool
 from agent_backend.tools.calendar import LocalCalendarTool
+from datetime import datetime
 
 
 class AgentWrapper:
@@ -159,20 +160,46 @@ class AgentWrapper:
                 participants: List of email addresses of other participants.
                 details: Any details about the meeting. Can have reference to email with email subject, if linked to an email.
             """
-            # Make sure participant list includes self
-            participants_all = participants + [self.user_config.email]
-            participants_all = list(set(participants_all))
             return self.calendar_client.add_calendar_event(time_from=time_from,
                                                   time_to=time_to,
                                                   event=event,
                                                   details=details,
-                                                  participants=participants_all)
+                                                  participants=participants)
+
+        @tool
+        def get_availability(time_from: str, time_to: str) -> List[dict]:
+            """
+            This is a tool that retrieves the upcoming events from the user's calendar that correspond to a certain time-range.
+            Returns a list of dictionaries containing time slots where the user is available.
+
+            Args:
+                time_from: The start time to check from. Should be in ISO format
+                time_to: The end time to check until. Should be in ISO format.
+            """
+            return self.calendar_client.get_availability(time_from, time_to)
+
 
         tools_available = [
             get_upcoming_events,
-            add_calendar_event
+            add_calendar_event,
+            get_availability
         ]
         return tools_available
+
+    def _self_tools(self):
+
+        @tool
+        def my_email():
+            """
+            This is a tool that returns my name and email ID as tuple
+
+            """
+            return self.user_config.name, self.user_config.email
+        
+        return [my_email]
+
+    def _create_local_agent_object(self, **kwargs) -> MultiStepAgent:
+        raise NotImplementedError("Child class should implement _create_local_agent_object()")
 
     def _initialize_agent(self, initiating_agent: bool) -> MultiStepAgent:
         if initiating_agent:
@@ -182,31 +209,11 @@ class AgentWrapper:
         
         # Fill in the template text
         # TODO: Find a better way around this mess
-        template_text = self.custom_prompt["system_prompt"].replace("[[[preamble]]]", preamble).replace("[[[task_finished_token]]]", self.task_finished_token)
-        # Use this template text as the 
+        today_date = datetime.now().strftime("%A, %B %d, %Y")
+        template_text = self.custom_prompt["system_prompt"].replace("[[[preamble]]]", preamble).replace("[[[task_finished_token]]]", self.task_finished_token).replace("[[[today_date]]]", today_date)
+        # Use this template text
 
-        agent = CodeAgent(
-            tools = self.tool_collections,
-            model = self.model,
-            add_base_tools = True,
-            additional_authorized_imports=self.config.additional_authorized_imports,
-            verbosity_level=2,
-            # system_prompt=self.prompt_for_agent
-        )
-
-        # Override the system template
-        agent.system_prompt = populate_template(
-            template_text,
-            variables={
-                "tools": agent.tools,
-                "managed_agents": agent.managed_agents,
-                "authorized_imports": (
-                    "You can import from any package you want."
-                    if "*" in agent.authorized_imports
-                    else str(agent.authorized_imports)
-                ),
-            },
-        )
+        agent = self._create_local_agent_object(template_text=template_text)
 
         return agent
 
@@ -228,6 +235,11 @@ class AgentWrapper:
             kwargs.pop("reset")
 
         response = agent_instance.run(str(query), reset=False, **kwargs)
+
+        # Replace "The task is completed." with self.task_finished_token
+        if response == "The task is completed.":
+            response = self.task_finished_token
+
         return agent_instance, response
 
 
@@ -241,6 +253,32 @@ class CodeAgentWrapper(AgentWrapper):
         super().__init__(user_config=user_config, 
                          config=config,
                          prompt_filename="CodeAgent.yaml")
+    
+    def _create_local_agent_object(self, **kwargs) -> CodeAgent:
+        agent = CodeAgent(
+            tools = self.tool_collections,
+            model = self.model,
+            add_base_tools = True,
+            additional_authorized_imports=self.config.additional_authorized_imports,
+            verbosity_level=2,
+            # system_prompt=self.prompt_for_agent
+        )
+
+        # Override the system template
+        agent.system_prompt = populate_template(
+            kwargs['template_text'],
+            variables={
+                "tools": agent.tools,
+                "managed_agents": agent.managed_agents,
+                "authorized_imports": (
+                    "You can import from any package you want."
+                    if "*" in agent.authorized_imports
+                    else str(agent.authorized_imports)
+                ),
+            },
+        )
+
+        return agent
 
 
 class ToolCallingAgentWrapper(AgentWrapper):
@@ -253,6 +291,25 @@ class ToolCallingAgentWrapper(AgentWrapper):
         super().__init__(user_config=user_config, 
                          config=config,
                          prompt_filename="ToolCallingAgent.yaml")
+    
+    def _create_local_agent_object(self, **kwargs) -> ToolCallingAgent:
+        agent = ToolCallingAgent(
+            tools = self.tool_collections,
+            model = self.model,
+            # add_base_tools = True,
+            verbosity_level=2
+        )
+
+        # Override the system template
+        agent.system_prompt = populate_template(
+            kwargs['template_text'],
+            variables={
+                "tools": agent.tools,
+                "managed_agents": agent.managed_agents
+            },
+        )
+
+        return agent
 
 
 def get_agent(user_config: UserConfig,
