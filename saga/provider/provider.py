@@ -11,6 +11,7 @@ from datetime import datetime, timezone, timedelta
 import os
 import saga.config
 from saga.logger import Logger as logger
+from saga.common.overhead import Monitor
 
 class Provider:
     def __init__(
@@ -66,6 +67,8 @@ class Provider:
         # Web server settings
         self.host = host
         self.port = port
+
+        self.monitor = Monitor()
 
     def check_rulebook(self, rulebook):
         """
@@ -308,6 +311,7 @@ class Provider:
             ) 
             
             # Get the agent's long term access control key:
+            pac = application.get("pac")
             pac_bytes = base64.b64decode(application.get("pac"))
                 
             # Build the agent cryptographic information block:
@@ -374,6 +378,25 @@ class Provider:
             # At this stage, all required checks have been completed. The provider 
             # can now store the agent's cryptographic material in the database. 
             # ========================================================================
+
+            # Define the agent "card":
+            card = {
+                "aid": aid,
+                "device": device,
+                "IP": ip,
+                "port": port,
+                "agent_cert": agent_cert_bytes,
+                "pac": pac_bytes,
+                "agent_sig": agent_sig_bytes
+            }
+
+            # Sign the agent card using the provider's private key:
+            card_bytes = str(card).encode("utf-8")
+            stamp = self.SK_Prov.sign(card_bytes) # universal stamp 
+            # Convert signagure to bytes:
+            stamp_bytes = base64.b64encode(stamp).decode("utf-8")
+            
+
             self.agents_collection.insert_one({
                 "aid": aid,
                 "device": device,
@@ -391,7 +414,7 @@ class Provider:
             # Pop the JWT from the user's record so that it cannot be reused for other purposes.
             self.users_collection.update_one({"uid": uid}, {"$pull": {"auth_tokens": {"token": user_jwt}}})
             logger.log("PROVIDER", f"Agent {aid} registered successfully.")
-            return jsonify({"message": "Agent registered successfully"}), 201
+            return jsonify({"message": "Agent registered successfully", "stamp": stamp_bytes}), 201
 
         @self.app.route('/lookup', methods=['POST'])
         def lookup():
@@ -406,6 +429,8 @@ class Provider:
             TODO: Sending the initiating agent's device IP is redundant. The receiving agent
             should already know the IP address of the initiating agent from the connection.
             """
+            # Start the stopwatch:
+            self.monitor.start("alg_lookup")
             data = request.json
             t_aid = data.get("t_aid", None)
 
@@ -439,6 +464,10 @@ class Provider:
             agent_metadata.pop("aid", None)
             agent_metadata.pop("IP", None)
             agent_metadata.pop("agent_cert", None)
+            # Stop stopwatch:
+            self.monitor.stop("alg_lookup")
+            logger.log("OVERHEAD", f"alg_lookup: {self.monitor.elapsed('alg_lookup')}")
+            
             return jsonify(agent_metadata), 200
     
         @self.app.route('/access', methods=['POST'])
@@ -456,7 +485,8 @@ class Provider:
             TODO: This function is inneficient and is not scalable because it is fetching ALL
             the one time keys from the database. Only the last one should be fetched.
             """
-            
+            # Start stopwatch
+            self.monitor.start("alg_access")
             # Convert PEM format string to bytes            
             i_aid_cert_bytes = request.environ.get('SSL_CLIENT_CERT').encode('utf-8')  # Extracts iniating agents's certificate
         
@@ -519,6 +549,9 @@ class Provider:
             agent_metadata.pop("contact_rulebook", None)
             agent_metadata.pop("_id", None)
 
+            # Stop stopwatch:
+            self.monitor.stop("alg_access")
+            logger.log("OVERHEAD", f"alg_access: {self.monitor.elapsed('alg_access')}")
             return jsonify(agent_metadata), 200
     
     def run(self):

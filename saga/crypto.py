@@ -266,12 +266,13 @@ def bytesToX509Certificate(bytes):
 
 def der_to_pem(der_bytes):
     """
-    Convert DER bytes to PEM format.
+    Convert DER bytes to properly line-wrapped PEM format (64-char lines).
     """
-    pem_bytes = b"-----BEGIN CERTIFICATE-----\n"
-    pem_bytes += base64.b64encode(der_bytes) + b"\n"
-    pem_bytes += b"-----END CERTIFICATE-----\n"
-    return pem_bytes
+    b64_encoded = base64.b64encode(der_bytes).decode('ascii')
+    # Insert newlines every 64 characters
+    wrapped = '\n'.join(b64_encoded[i:i+64] for i in range(0, len(b64_encoded), 64))
+    pem = f"-----BEGIN CERTIFICATE-----\n{wrapped}\n-----END CERTIFICATE-----\n"
+    return pem.encode('ascii')
 
 def pem_to_bytes(pem_string):
     """

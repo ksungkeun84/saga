@@ -14,10 +14,11 @@ import saga.config
 from pathlib import Path
 import random
 from saga.logger import Logger as logger
+from saga.common.overhead import Monitor
 from saga.ca.CA import get_SAGA_CA
 
 DEBUG = False
-MAX_BUFFER_SIZE = 4096
+MAX_BUFFER_SIZE = 8*1024
 MAX_QUERIES = 100
 """"
 
@@ -164,6 +165,76 @@ class Agent:
         # Verify the provider certificate:
         self.CA.verify(provider_cert) # if the verification fails an exception will be raised.
         self.PK_Prov = provider_cert.public_key()
+
+        # Get the stamp issued by the provider (allegedly):
+        agent_sig_bytes = material.get("agent_sig")
+        self.stamp = material.get("stamp")
+        self.card = {
+            "aid": self.aid,
+            "device": self.device,
+            "IP": self.IP,
+            "port": self.port,
+            "agent_cert": base64.b64decode(material.get("agent_cert")),
+            "pac":  base64.b64decode(material.get("pac")),
+            "agent_sig": base64.b64decode(agent_sig_bytes),
+        }
+        # Verify the stamp:
+        try:
+            self.PK_Prov.verify(
+                base64.b64decode(self.stamp),
+                str(self.card).encode("utf-8")
+            )
+        except:
+            logger.error("ERROR: PROVIDER STAMP VERIFICATION FAILED. UNSAFE CONNECTION.")
+            raise Exception("ERROR: PROVIDER STAMP VERIFICATION FAILED. UNSAFE CONNECTION.")
+        
+        # Serialize the card:
+        self.card['agent_cert'] = base64.b64encode(
+            self.card['agent_cert']
+        ).decode("utf-8")
+        self.card['pac'] = base64.b64encode(
+            self.card['pac']
+        ).decode("utf-8")
+        self.card['agent_sig'] = base64.b64encode(
+            self.card['agent_sig']
+        ).decode("utf-8")
+
+        self.crt_u = sc.bytesToX509Certificate(
+            base64.b64decode(material.get("crt_u"))
+        )
+        # Verify usr certificate:
+        self.CA.verify(self.crt_u)
+
+        self.monitor = Monitor()
+
+    def serialize(self, obj):
+        """
+        Serializes the object to a JSON string.
+        """
+        if isinstance(obj, bytes):
+            return base64.b64encode(obj).decode('utf-8')
+        elif isinstance(obj, list):
+            return [self.serialize(item) for item in obj]
+        elif isinstance(obj, dict):
+            return {key: self.serialize(value) for key, value in obj.items()}
+        else:
+            return obj
+
+    def deserialize(self, obj):
+        """
+        Deserializes the object from a JSON string.
+        """
+        if isinstance(obj, str):
+            try:
+                return base64.b64decode(obj)
+            except:
+                return obj
+        elif isinstance(obj, list):
+            return [self.deserialize(item) for item in obj]
+        elif isinstance(obj, dict):
+            return {key: self.deserialize(value) for key, value in obj.items()}
+        else:
+            return obj
 
     def get_provider_cert(self):
         """
@@ -470,6 +541,9 @@ class Agent:
 
     def connect(self, r_aid, message: str):
 
+        # Start measuring algo overhead:
+        self.monitor.start("alg_init")
+
         # Get everything you need to reach the receiving agent from the provider:
 
         # Check if you have a token:
@@ -483,7 +557,9 @@ class Agent:
             # Fetch agent information from the provider:
             logger.log("ACCESS", f"No valid token found for {r_aid}.")
             logger.log("ACCESS", f"Requesting access to {r_aid} via the Provider.")
+            self.monitor.stop("alg_init")
             r_agent_material = self.access(r_aid)
+            self.monitor.start("alg_init")
 
         if r_agent_material is None:
             logger.log("ACCESS", f"Access to {r_aid} denied.")
@@ -569,6 +645,9 @@ class Agent:
         # Save/Update agent material in memory now that it is verified:
         self.previously_contacted_agents[r_aid] = r_agent_material
 
+        # Stop measuring algo overhead:
+        self.monitor.stop("alg_init")
+
         # Create SSL context for the client
         context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
         context.options |= ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1 | ssl.OP_NO_TLSv1_2  # TLS 1.3 only
@@ -584,9 +663,18 @@ class Agent:
                 with context.wrap_socket(sock, server_hostname=r_aid) as conn:
                     logger.log("NETWORK", f"Connected to {r_ip}:{r_port} with verified certificate.")
 
+                    # Start measuring algo overhead:
+                    self.monitor.start("alg_init")
+
                     # Prepare the request:
                     request_dict = {}
-                    request_dict['aid'] = self.aid # The initiating agent's ID
+                    # Attach the agent's information card and the stamp from the Provider.
+                    request_dict['crt_u'] = base64.b64encode(
+                        self.crt_u.public_bytes(sc.serialization.Encoding.PEM)
+                    ).decode("utf-8")
+                    
+                    request_dict['card'] = self.card                    
+                    request_dict['stamp'] = self.stamp
 
                     # If there is no active token for contacting r_aid:
                     if token is None:
@@ -613,7 +701,9 @@ class Agent:
                         # If a token is found, the initiating agent can send 
                         # it to the receiving agent.                        
                         request_dict['token'] = token
-                        
+                    # Stop the stopwatch
+                    self.monitor.stop("alg_init")
+
                     # Encode the request as JSON
                     request_json = json.dumps(request_dict).encode('utf-8')
                     # Send JSON request
@@ -621,6 +711,10 @@ class Agent:
 
                     # Receive response
                     response = conn.recv(MAX_BUFFER_SIZE)
+
+                    # Restart the stopwatch:
+                    self.monitor.start("alg_init")
+                    
                     if token is None and response:
                         # If no valid token was found, the expected response is a token.
                         response_dict = json.loads(response.decode('utf-8'))
@@ -653,6 +747,10 @@ class Agent:
                         # Store the token:
                         self.store_received_token(r_aid, new_enc_token_str, token_dict)
                         
+                        # Stop the stopwatch:
+                        self.monitor.stop("alg_init")
+                        logger.log("OVERHEAD", f"alg_init: {self.monitor.elapsed('alg_init')}")
+
                         # Start the conversation:
                         self.initiate_conversation(conn, new_enc_token_str, r_aid, message)         
                     else:
@@ -661,6 +759,10 @@ class Agent:
                         if response:
                             response_dict = json.loads(response.decode('utf-8'))
                             if response_dict["token"] is not None:
+                                # Stop the stopwatch:
+                                self.monitor.stop("alg_init")
+                                logger.log("OVERHEAD", f"alg_init: {self.monitor.elapsed('alg_init')}")
+
                                 self.initiate_conversation(conn, token, r_aid, message)
                             else:
                                 logger.error("Token rejected from receiving side.")
@@ -760,12 +862,18 @@ class Agent:
             # Receive data
             data = conn.recv(MAX_BUFFER_SIZE)
             if data:
+                    # Start the stopwatch:
+                    self.monitor.start("alg_recv")
                     try:
                         # Decode and parse JSON data
                         received_msg = json.loads(data.decode('utf-8'))
 
-                        # Extract i_aid:
-                        i_aid = received_msg.get("aid", None)
+                        # Extract i_aid from card:
+                        i_card = received_msg.get("card", None)
+                        #i_card = self.deserialize(i_card)
+                        i_aid = i_card.get("aid", None)
+
+                        # Check that the agent 
 
                         if i_aid is None:
                             logger.error("No agent ID found in the initial message from the initiating side.")
@@ -775,10 +883,29 @@ class Agent:
                             # The initiating agent is not allowed to contact the receiving agent.
                             logger.log("ACCESS", f"Access control failed: {i_aid} is not allowed to contact this agent.")
                             raise Exception(f"Access control failed: {i_aid} is not allowed to contact this agent.")
-
-                        # Ask the provider for the details of the initiating agent:
-                        logger.log("ACCESS", f"Fetching crypto and device information for {i_aid} from the Provider.")
-                        i_agent_material = self.lookup(i_aid)
+                        
+                        # Fill in the agent certificate and agent IP from the connection:
+                        # - this handles mismatch checks too
+                        i_card['IP'] = fromaddr[0]
+                        i_card['agent_cert'] = sc.der_to_pem(conn.getpeercert(binary_form=True))
+                        # Convert to byte format for signature verification:
+                        i_card['pac'] = base64.b64decode(i_card['pac'])
+                        i_card['agent_sig'] = base64.b64decode(i_card['agent_sig'])
+                
+                        
+                        logger.log("CRYPTO", f"Verifying {i_aid}'s stamp from the Provider.")
+                        i_stamp = received_msg.get("stamp", None)
+                        try:
+                            self.PK_Prov.verify(
+                                base64.b64decode(i_stamp),
+                                str(i_card).encode("utf-8")
+                            )
+                        except:
+                            logger.error(f"ERROR: {i_aid} STAMP VERIFICATION FAILED. UNSAFE CONNECTION.")
+                            raise Exception(f"ERROR: {i_aid} STAMP VERIFICATION FAILED. UNSAFE CONNECTION.")
+                        
+                        # Check data integrity:
+                        i_agent_material = i_card
 
                         # Perform verification checks:                                
                         if i_agent_material is None:
@@ -786,7 +913,7 @@ class Agent:
                             raise Exception(f"{i_aid} not found.")
                     
                         # Verify user certificate:
-                        i_agent_user_cert_bytes = i_agent_material.get("crt_u", None)
+                        i_agent_user_cert_bytes = base64.b64decode(received_msg.get("crt_u", None))
                         i_agent_user_cert = sc.bytesToX509Certificate(i_agent_user_cert_bytes)
 
                         logger.log("CRYPTO", f"Verifying {i_aid}'s user certificate.")
@@ -837,11 +964,11 @@ class Agent:
                         block = {}
                         block.update(dev_network_info)
                         block.update(crypto_info)
-                        r_agent_sig_bytes = i_agent_material.get("agent_sig")
+                        i_agent_sig_bytes = i_agent_material.get("agent_sig")
                         logger.log("CRYPTO", f"Verifying {i_aid}'s signature.")
                         try:
                             pk_u.verify(
-                                r_agent_sig_bytes,
+                                i_agent_sig_bytes,
                                 str(block).encode("utf-8")
                             )
                         except:
@@ -895,8 +1022,7 @@ class Agent:
                             
                             # Generate the token:
                             enc_token_bytes = self.generate_token(i_pac, SDHK)
-                            enc_token_str = base64.b64encode(enc_token_bytes).decode('utf-8')
-                            # TODO: change the 
+                            enc_token_str = base64.b64encode(enc_token_bytes).decode('utf-8') 
                             token_response = {"token": enc_token_str}
                             logger.log("ACCESS", f"Generated token: {enc_token_str}")
 
@@ -906,6 +1032,10 @@ class Agent:
                             with self.active_tokens_lock:
                                 self.active_tokens[enc_token_str] = sc.decrypt_token(enc_token_str, SDHK)
 
+                            # Stop the stopwatch
+                            self.monitor.stop("alg_recv")
+                            logger.log("OVERHEAD", f"alg_recv: {self.monitor.elapsed('alg_recv')}")
+
                             conn.sendall(ser_token_response)
 
                             # Start the conversation:
@@ -914,6 +1044,10 @@ class Agent:
                         else:
                             # Check the token and see if it is in the active tokens:
                             if self.token_is_valid(i_token, i_pac):
+                                # Stop the stopwatch
+                                self.monitor.stop("alg_recv")
+                                logger.log("OVERHEAD", f"alg_recv: {self.monitor.elapsed('alg_recv')}")
+
                                 # If the token is valid, start the conversation:
                                 logger.log("ACCESS", f"Valid token found. Will accept conversation.")
                                 conn.sendall(json.dumps({"token": i_token}).encode('utf-8'))
