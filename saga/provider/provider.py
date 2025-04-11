@@ -416,60 +416,6 @@ class Provider:
             logger.log("PROVIDER", f"Agent {aid} registered successfully.")
             return jsonify({"message": "Agent registered successfully", "stamp": stamp_bytes}), 201
 
-        @self.app.route('/lookup', methods=['POST'])
-        def lookup():
-            """"
-            This endpoint is used by any agent to look up the public cryptographic material 
-            of another agent. In most use cases, the receiving agent uses the lookup endpoint
-            to retrieve the public cryptographic material of the initiating agent. 
-
-            No one-time keys are returned in the response. Only the public cryptographic
-            material of the agent.
-
-            TODO: Sending the initiating agent's device IP is redundant. The receiving agent
-            should already know the IP address of the initiating agent from the connection.
-            """
-            # Start the stopwatch:
-            self.monitor.start("alg_lookup")
-            data = request.json
-            t_aid = data.get("t_aid", None)
-
-            agent_metadata = self.agents_collection.find_one({"aid" : t_aid})
-            # CONTACT POLICY ENFORCEMENT:
-            # Get the agent's contact rulebook:
-            # Check if the agent is allowed to be contacted by the requesting agent.
-            if agent_metadata is None:
-                logger.error(f"Agent {t_aid} not found.")
-                return jsonify({"message":"Agent not found."}), 404
-            # Check if the agent is allowed to be contacted by the requesting agent.
-            contact_rulebook = agent_metadata.get("contact_rulebook", [])
-            if not self.is_allowed_to_contact(contact_rulebook, t_aid):
-                logger.error(f"Agent {t_aid} not allowed to be contacted.")
-                return jsonify({"message":"Agent not allowed to be contacted."}), 403
-            
-            user_metadata = self.users_collection.find_one({"uid" : t_aid.split(":")[0]})
-            if user_metadata is None:
-                logger.error(f"Cannot find agent owner with uid: {t_aid.split(':')[0]}.")
-                return jsonify({"message":"Cannot find agent owner."}), 404
-            # Include the user's public signing key in the response
-            crt_u_bytes = user_metadata.get("crt_u")
-            agent_metadata.update({"crt_u": crt_u_bytes})
-            # Remove the one time keys from the response
-            agent_metadata.pop("one_time_keys", None)
-            agent_metadata.pop("one_time_key_sigs", None)
-            # Remove the contact rulebook from the response
-            agent_metadata.pop("contact_rulebook", None)
-            # Remove other redundant information from the response
-            agent_metadata.pop("_id", None)
-            agent_metadata.pop("aid", None)
-            agent_metadata.pop("IP", None)
-            agent_metadata.pop("agent_cert", None)
-            # Stop stopwatch:
-            self.monitor.stop("alg_lookup")
-            logger.log("OVERHEAD", f"alg_lookup: {self.monitor.elapsed('alg_lookup')}")
-            
-            return jsonify(agent_metadata), 200
-    
         @self.app.route('/access', methods=['POST'])
         def access():
             """
