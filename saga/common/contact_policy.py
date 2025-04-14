@@ -2,7 +2,7 @@
 Common contact policy package for Thesmos
 """
 import fnmatch
-from saga.logger import Logger as logger
+from saga.common.logger import Logger as logger
 
 def check_aid(aid):
     """

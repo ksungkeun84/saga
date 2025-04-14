@@ -13,7 +13,7 @@ import traceback
 import saga.config
 from pathlib import Path
 import random
-from saga.logger import Logger as logger
+from saga.common.logger import Logger as logger
 from saga.common.overhead import Monitor
 from saga.common.contact_policy import check_rulebook, match
 from saga.ca.CA import get_SAGA_CA

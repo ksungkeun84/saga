@@ -7,7 +7,7 @@ import saga.crypto as sc
 from saga.ca.CA import get_SAGA_CA
 import os
 import json
-from saga.logger import Logger as logger
+from saga.common.logger import Logger as logger
 
 
 def get_provider_cert(email):

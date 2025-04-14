@@ -10,7 +10,7 @@ import base64
 from datetime import datetime, timezone, timedelta
 import os
 import saga.config
-from saga.logger import Logger as logger
+from saga.common.logger import Logger as logger
 from saga.common.overhead import Monitor
 from saga.common.contact_policy import check_rulebook, check_aid, match
 
