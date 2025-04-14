@@ -26,7 +26,7 @@ MAX_QUERIES = 100
 Agent class for the SAGA system.
 
 """
-import saga.crypto as sc
+import saga.common.crypto as sc
 
 def get_agent_material(dir_path: Path):
     # Check if dir exists:
