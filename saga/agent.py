@@ -15,6 +15,7 @@ from pathlib import Path
 import random
 from saga.logger import Logger as logger
 from saga.common.overhead import Monitor
+from saga.common.contact_policy import check_rulebook, match
 from saga.ca.CA import get_SAGA_CA
 
 DEBUG = False
@@ -143,7 +144,7 @@ class Agent:
 
         # Agent Contact Policy Rulebook:
         self.contact_rulebook = material.get("contact_rulebook", [])
-        if not self.check_rulebook(self.contact_rulebook):
+        if not check_rulebook(self.contact_rulebook):
             logger.error("Contact rulebook is not valid. Exiting...")
             raise Exception("Contact rulebook is not valid. Exiting...")
 
@@ -783,75 +784,6 @@ class Agent:
             except:
                 logger.log("NETWORK", "Connection already closed by other party.")
 
-    def check_rulebook(self, rulebook):
-        """
-        Checks if the contact rulebook is valid.
-        """
-        if rulebook is None:
-            return False
-        for rule in rulebook:
-            # Rules are in the form of:
-            # alice@her_email.com:bobafet
-            components = rule.split(":")
-            if len(components) == 1:
-                if components[0] != "*":
-                    logger.error(f"Invalid AC rule {rule} format. Expected format: <aid> = <uid>:<name>")
-                    return False
-                continue
-            if len(components) != 2:
-                logger.error(f"Invalid AC rule {rule} format. Expected format: <aid> = <uid>:<name>")
-                return False
-            uid, name = components[0], components[1]
-            if not isinstance(uid, str) or not isinstance(name, str):
-                logger.error(f"Invalid AC rule {rule} format. Expected format: <aid> = <uid>:<name>. Both the uid and aid must be strings.")
-                return False
-        return True
-
-    def check_aid(self, aid):
-        """
-        Checks if the AID is in the right format.
-        """
-        # AID is in the form of:
-        # alice@her_email.com:bobafet
-        components = aid.split(":")
-        if len(components) != 2:
-            logger.error("Invalid AID format. Expected format: <aid> = <uid>:<name>")
-            return False
-        uid, name = components[0], components[1]
-        if not isinstance(uid, str) or not isinstance(name, str):
-            logger.error("Invalid AID format. Expected format: <aid> = <uid>:<name>. Both the uid and aid must be strings.")
-            return False
-        # Check if the uid and name are valid:
-        # The uid must only have 1 '@' character and NO ':' characters.
-        if uid.count('@') != 1 or uid.count(':') != 0:
-            logger.error("Invalid UID format.")
-        # Check the name format:
-        # The name must not have any ':' characters.
-        if name.count(':') != 0:
-            logger.error("Invalid NAME format.")
-            return False
-        return True
-
-    def allowed_to_contact(self, i_aid):
-        """
-        Checks if the initiating agent is allowed to contact the receiving agent.
-        If the
-        """
-
-        # Check that the i_aid is in the right format:
-        if not self.check_aid(i_aid):
-            logger.error("Invalid AID format. Expected format: <aid> = <uid>:<name>")
-            return False
-        
-        # Check if the agent is allowed to contact the receiving agent:
-        for rule in self.contact_rulebook:
-            # Use fnmatch for Unix filename pattern matching
-            if fnmatch.fnmatch(i_aid, rule):
-                # The agent is allowed to contact the receiving agent.
-                return True
-        # Otherwise, the agent is not allowed to contact the receiving agent.
-        return False
-
     def handle_i_agent_connection(self, conn, fromaddr):
         """
         Handles an incoming TLS connection from an intiating agent.
@@ -879,7 +811,7 @@ class Agent:
                             logger.error("No agent ID found in the initial message from the initiating side.")
                             raise Exception("No agent ID provided.")
                         
-                        if not self.allowed_to_contact(i_aid):
+                        if match(self.contact_rulebook, i_aid) < 0:
                             # The initiating agent is not allowed to contact the receiving agent.
                             logger.log("ACCESS", f"Access control failed: {i_aid} is not allowed to contact this agent.")
                             raise Exception(f"Access control failed: {i_aid} is not allowed to contact this agent.")

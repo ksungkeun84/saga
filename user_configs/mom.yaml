@@ -54,5 +54,10 @@ agents:
       ip: 127.0.0.1
       port: 7002
       device_name: lambda
-    contact_rulebook: ["*"]
-    num_one_time_keys: 100
+    contact_rulebook: [
+      {
+        "pattern": "*",
+        "budget": 100
+      }
+    ]
+    num_one_time_keys: 1

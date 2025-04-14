@@ -12,6 +12,7 @@ import os
 import saga.config
 from saga.logger import Logger as logger
 from saga.common.overhead import Monitor
+from saga.common.contact_policy import check_rulebook, check_aid, match
 
 class Provider:
     def __init__(
@@ -69,69 +70,6 @@ class Provider:
         self.port = port
 
         self.monitor = Monitor()
-
-    def check_rulebook(self, rulebook):
-        """
-        Checks if the contact rulebook is valid.
-        """
-        if rulebook is None:
-            return False
-        for rule in rulebook:
-            # Rules are in the form of:
-            # alice@her_email.com:bobafet
-            components = rule.split(":")
-            if len(components) == 1:
-                if components[0] != "*":
-                    logger.error(f"Invalid rulebook format: {rule}")
-                    return False
-                continue
-            
-            if len(components) != 2:
-                logger.error(f"Invalid rulebook format: {rule}")
-                return False
-            
-            uid, name = components[0], components[1]
-            if not isinstance(uid, str) or not isinstance(name, str):
-                return False
-        return True
-
-    def check_aid(self, aid):
-        """
-        Checks if the AID is in the right format.
-        """
-        # AID is in the form of:
-        # alice@her_email.com:bobafet
-        components = aid.split(":")
-        if len(components) != 2:
-            return False
-        uid, name = components[0], components[1]
-        if not isinstance(uid, str) or not isinstance(name, str):
-            return False
-        # Check if the uid and name are valid:
-        # The uid must only have 1 '@' character and NO ':' characters.
-        if uid.count('@') != 1 or uid.count(':') != 0:
-            return False
-        # Check the name format:
-        # The name must not have any ':' characters.
-        if name.count(':') != 0:
-            return False
-        return True
-
-    def is_allowed_to_contact(self, contact_rulebook, t_aid):
-        """
-        This function checks if the agent is allowed to contact the target agent.
-        The contact rulebook is a list of strings in unix pattern format.
-        If the contact rulebook is empty, by convention, the receiving agent 
-        is not allowed to be contacted by any agent.
-        """
-        # Check that the t_aid is valid (correct format)
-        if not self.check_aid(t_aid):
-            return False
-        # Check if the target agent ID is in the contact rulebook
-        for rule in contact_rulebook:
-            if fnmatch.fnmatch(t_aid, rule):
-                return True
-        return False
 
     def _register_routes(self):
         """Registers all Flask routes for the provider."""
@@ -264,7 +202,7 @@ class Provider:
                 return jsonify({"message": "Agent aid not provided"}), 400
 
             # Make sure that the aid is in the right format.
-            if not self.check_aid(aid):
+            if not check_aid(aid):
                 logger.error(f"Invalid agent aid format.")
                 return jsonify({"message": "Invalid agent aid format"}), 400
             
@@ -370,8 +308,7 @@ class Provider:
             # Check the agent's contact rulebook:
             contact_rulebook = application.get("contact_rulebook", [])
             # Check if the rulebook is in the correct format.
-            if not self.check_rulebook(contact_rulebook):
-                logger.error(f"Invalid contact rulebook format.")
+            if not check_rulebook(contact_rulebook):
                 return jsonify({"message": "Invalid contact rulebook format"}), 400
 
             # ========================================================================
@@ -410,6 +347,8 @@ class Provider:
                 # Signatures:
                 "agent_sig": agent_sig_bytes,
                 "one_time_key_sigs": otk_sigs_bytes,
+                # Budget Counter:
+                "counter": []
             })
             # Pop the JWT from the user's record so that it cannot be reused for other purposes.
             self.users_collection.update_one({"uid": uid}, {"$pull": {"auth_tokens": {"token": user_jwt}}})
@@ -427,9 +366,6 @@ class Provider:
 
             The response will include the one-time key and the user's identity key
             along with all other relevant cryptographic material of the receiving agent.
-
-            TODO: This function is inneficient and is not scalable because it is fetching ALL
-            the one time keys from the database. Only the last one should be fetched.
             """
             # Start stopwatch
             self.monitor.start("alg_access")
@@ -440,10 +376,10 @@ class Provider:
             data = request.json
             i_aid = data.get("i_aid", None) # the initiating agent
             t_aid = data.get("t_aid", None) # the receiving agent
-            if not self.check_aid(t_aid):
+            if not check_aid(t_aid):
                 logger.error(f"Invalid agent ID format.")
                 return jsonify({"message":f"Invalid agent ID: {t_aid} format."}), 400
-            if not self.check_aid(i_aid):
+            if not check_aid(i_aid):
                 logger.error(f"Invalid agent ID format.")
                 return jsonify({"message":f"Invalid agent ID: {i_aid} format."}), 400
             uid = t_aid.split(":")[0]
@@ -451,7 +387,7 @@ class Provider:
             # Make sure that the initiating agent is indeed who they claim to be:
             i_agent_metadata = self.agents_collection.find_one({"aid" : i_aid, "agent_cert": i_aid_cert_bytes})
             if i_agent_metadata is None:
-                logger.error(f"ACCESS DENIED. ALSO ADD THAT BUM TO A BLACKLIST.")
+                logger.error(f"ACCESS DENIED. IMPERSONATION.")
                 return jsonify({"message":"Agent not found."}), 403
 
             user_metadata = self.users_collection.find_one({"uid" : uid})
@@ -468,37 +404,140 @@ class Provider:
                 return jsonify({"message":"Agent not found."}), 404
             # Check if the initiating agent is allowed to be contacted by the requesting agent.
             contact_rulebook = agent_metadata_before.get("contact_rulebook", [])
-            if not self.is_allowed_to_contact(contact_rulebook, i_aid):
-                logger.error(f"Agent {t_aid} not allowed to be contacted.")
-                return jsonify({"message":"Agent not allowed to be contacted."}), 403
+            
+            budget = match(contact_rulebook, i_aid)
+            if budget < 0:
+                logger.error(f"Agent {t_aid} has blocklisted Agent {i_aid}.")
+                return jsonify({"message":"Access denied."}), 403
 
-            agent_metadata = self.agents_collection.find_one_and_update(
-                {"aid": t_aid, "one_time_keys": {"$ne": []}},  # Ensure keys exist
+            if budget == 0:
+                logger.error(f"Agent {t_aid} has not added Agent {i_aid} to its contact policy.")
+                return jsonify({"message":"Access denied."}), 403
+
+        
+            # If the budget is greater than 0, the agent is allowed to be contacted.
+            # 1) Ensure the target agent has one time keys available.
+            # 2) Decrease the budget of the initiating agent by 1 (lowest possible is 0).
+            # 3) Pop the last one-time key and its signature from the target agent entry.
+            t_agent_metadata = self.agents_collection.find_one_and_update(
                 {
-                    "$pop": {"one_time_keys": 1, "one_time_key_sigs": 1}  # Remove last key and signature
+                    "aid": t_aid,
+                    "one_time_keys": { "$ne": [] },
+                    "counter": {
+                        "$not": {
+                            "$elemMatch": {
+                                "aid": i_aid,
+                                "budget": { "$lte": 0 }
+                            }
+                        }
+                    }
                 },
-                return_document=False  # Return document *before* modification
+                [
+                    {
+                        "$set": {
+                            "counter": {
+                                "$let": {
+                                    "vars": {
+                                        "hasEntry": {
+                                            "$gt": [
+                                                {
+                                                    "$size": {
+                                                        "$filter": {
+                                                            "input": "$counter",
+                                                            "cond": { "$eq": [ "$$this.aid", i_aid ] }
+                                                        }
+                                                    }
+                                                },
+                                                0
+                                            ]
+                                        }
+                                    },
+                                    "in": {
+                                        "$cond": {
+                                            "if": "$$hasEntry",
+                                            "then": {
+                                                "$map": {
+                                                    "input": "$counter",
+                                                    "as": "entry",
+                                                    "in": {
+                                                        "$cond": {
+                                                            "if": { "$eq": [ "$$entry.aid", i_aid ] },
+                                                            "then": {
+                                                                "aid": "$$entry.aid",
+                                                                "budget": {
+                                                                    "$max": [ 0, { "$subtract": [ "$$entry.budget", 1 ] } ]
+                                                                }
+                                                            },
+                                                            "else": "$$entry"
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            "else": {
+                                                "$concatArrays": [
+                                                    "$counter",
+                                                    # Initialization with budget - 1 because it consumes 
+                                                    # a key from the budget immediately upon creation.
+                                                    [ { "aid": i_aid, "budget": budget-1 } ]
+                                                ]
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "one_time_keys": {
+                                "$cond": {
+                                    "if": { "$gt": [ { "$size": { "$ifNull": ["$one_time_keys", []] } }, 1 ] },
+                                    "then": {
+                                        "$slice": [
+                                            "$one_time_keys",
+                                            0,
+                                            { "$subtract": [ { "$size": "$one_time_keys" }, 1 ] }
+                                        ]
+                                    },
+                                    "else": []
+                                }
+                            },
+                            "one_time_key_sigs": {
+                                "$cond": {
+                                    "if": { "$gt": [ { "$size": { "$ifNull": ["$one_time_key_sigs", []] } }, 1 ] },
+                                    "then": {
+                                        "$slice": [
+                                            "$one_time_key_sigs",
+                                            0,
+                                            { "$subtract": [ { "$size": "$one_time_key_sigs" }, 1 ] }
+                                        ]
+                                    },
+                                    "else": []
+                                }
+                            }
+                        }
+                    }
+                ],
+                return_document=False
             )
+    
 
             # If agent not found or no keys left, return 404
-            if agent_metadata is None:
+            if t_agent_metadata is None:
                 logger.error(f"Agent {t_aid} not found or no keys left.")
                 return jsonify({"message": "Agent not found or no keys left."}), 404
 
             # Include the user's identity key in the response
             crt_u_bytes = user_metadata.get("crt_u")
-            agent_metadata.update({"crt_u": crt_u_bytes})
+            t_agent_metadata.update({"crt_u": crt_u_bytes})
             # Remove the one time keys from the response except the last one:
-            agent_metadata['one_time_keys'] = [agent_metadata['one_time_keys'][-1]]
-            agent_metadata['one_time_key_sigs'] = [agent_metadata['one_time_key_sigs'][-1]]
+            t_agent_metadata['one_time_keys'] = [t_agent_metadata['one_time_keys'][-1]]
+            t_agent_metadata['one_time_key_sigs'] = [t_agent_metadata['one_time_key_sigs'][-1]]
             # Remove the contact rulebook from the response
-            agent_metadata.pop("contact_rulebook", None)
-            agent_metadata.pop("_id", None)
+            t_agent_metadata.pop("contact_rulebook", None)
+            t_agent_metadata.pop("_id", None)
+            t_agent_metadata.pop("counter", None)
 
             # Stop stopwatch:
             self.monitor.stop("alg_access")
             logger.log("OVERHEAD", f"alg_access: {self.monitor.elapsed('alg_access')}")
-            return jsonify(agent_metadata), 200
+            return jsonify(t_agent_metadata), 200
     
     def run(self):
         """Runs the web server."""
