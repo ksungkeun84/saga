@@ -4,7 +4,7 @@ from flask import Flask, request, jsonify
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import create_access_token, JWTManager
 from flask_pymongo import PyMongo
-import saga.crypto as sc
+import saga.common.crypto as sc
 from saga.ca.CA import get_SAGA_CA
 import base64
 from datetime import datetime, timezone, timedelta

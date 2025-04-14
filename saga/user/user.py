@@ -3,7 +3,7 @@ import ssl
 import requests
 import base64
 import saga.config
-import saga.crypto as sc
+import saga.common.crypto as sc
 from saga.ca.CA import get_SAGA_CA
 import os
 import json
