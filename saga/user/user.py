@@ -3,11 +3,11 @@ import ssl
 import requests
 import base64
 import saga.config
-import saga.crypto as sc
+import saga.common.crypto as sc
 from saga.ca.CA import get_SAGA_CA
 import os
 import json
-from saga.logger import Logger as logger
+from saga.common.logger import Logger as logger
 
 
 def get_provider_cert(email):
@@ -254,7 +254,8 @@ def register_agent(name=None, device=None, IP=None, port=None, num_one_time_keys
     # Based on the provider's response, store the agent's cryptographic material
     if response.status_code == 201:  
         # Save the agent's cryptographic material
-        logger.log("PROVIDER", f"Agent {name} registered successfully.")  
+        stamp = response.json().get('stamp')
+        logger.log("PROVIDER", f"Agent {name} registered successfully with stamp {stamp}.")  
         state['agents'][name]= {
             'signing_key': {
                 'public': pk_a,
@@ -268,7 +269,13 @@ def register_agent(name=None, device=None, IP=None, port=None, num_one_time_keys
         }
         # Spawn Agent with the given material:
         
+        crt_u = sc.load_x509_certificate(saga.config.USER_WORKDIR+"/keys/"+state['uid']+".crt")
+
         application.update({
+            "stamp": stamp,
+            "crt_u": base64.b64encode(
+                crt_u.public_bytes(sc.serialization.Encoding.PEM)
+            ).decode("utf-8"),
             "secret_signing_key": base64.b64encode(sk_a.private_bytes(
                 encoding=sc.serialization.Encoding.Raw,
                 format=sc.serialization.PrivateFormat.Raw,

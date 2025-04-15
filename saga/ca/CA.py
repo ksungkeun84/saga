@@ -1,8 +1,8 @@
 import os
-import saga.crypto as sc
+import saga.common.crypto as sc
 import saga.config
 import requests
-from saga.logger import Logger as logger
+from saga.common.logger import Logger as logger
 
 def download_file(url, save_path):
     response = requests.get(url, stream=True)

@@ -13,7 +13,7 @@ import traceback
 import saga.config
 from pathlib import Path
 import random
-from saga.logger import Logger as logger
+from saga.common.logger import Logger as logger
 from saga.ca.CA import get_SAGA_CA
 
 DEBUG = False
@@ -24,7 +24,7 @@ MAX_QUERIES = 50
 Agent class for the SAGA system.
 
 """
-import saga.crypto as sc
+import saga.common.crypto as sc
 
 def get_agent_material(dir_path: Path):
     # Check if dir exists:

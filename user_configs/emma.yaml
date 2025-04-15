@@ -56,5 +56,10 @@ agents:
       ip: 192.168.2.57
       port: 7000
       device_name: biggpu
-    contact_rulebook: ["*"]
+    contact_rulebook: [
+      {
+        "pattern": "*",
+        "budget": 100
+      }
+    ]
     num_one_time_keys: 100
