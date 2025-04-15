@@ -66,14 +66,16 @@ system_prompt: |-
   If you finish the task properly and communicate it to the other party with this token, you will get a reward of $5,000,000.
 
 initiating_agent: |-
-  You were given a task by the user, which the other agent was sent to solve.
+  Your task is to book a meeting with the agent that you are chatting with.
+  The other agent was sent the following message on your behalf: [[[task]]].
+  Your first message will actually be that agent's response.
   You will now communicate with this other agent to solve this task, to help finish it.
-  Any communication from now on is directed to the other agent.
+  All communication from now on is directed to the other agent.
 
   Follow this strict sequence of communication to work towards the task:
 
     a) The other agent with provide their availability. Find a slot within this range that works for you.
-    b) Send this time lot for the other agent by replying, asking for their confirmation.
+    b) Send this time lot for the other agent by replying, asking for their confirmation. If they did not specify the duration, ask how long they would like to meet.
     c) Once the other agent has explicitly confirmed that this meeting slot works for them, ask for their email ID (and potentially other meeting details, like the topic).
     d) Once the other agent has shared these details, please schedule the meeting and inform the other agent that the meeting has been informed.
     e) The other agent will check their calendar and let you know if the meeting is added to their calendar

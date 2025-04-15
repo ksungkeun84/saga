@@ -1,48 +1,59 @@
 from agent_backend.config import UserConfig
-from agent_backend.base import AgentWrapper
+from agent_backend.base import get_agent
+from smolagents import GradioUI
 
-from saga.agent import Agent, get_agent_material
 
-
-def main(mode, config_path, other_user_config_path=None):
+def main(config_path):
     AGENT_FOCUS = 0
-    config = UserConfig.load(config_path, drop_extra_fields=False)
+    config = UserConfig.load(config_path, drop_extra_fields=True)
 
     # Initialize local agent
-    local_agent = AgentWrapper(config, config.agents[0])
+    local_agent = get_agent(config, config.agents[0])
 
-    # Focus on first agent - infer credentials endpoint
-    credentials_endpoint = f"user/{config.email}:{config.agents[AGENT_FOCUS].name}/"
-    # Read agent material
-    material = get_agent_material (credentials_endpoint)
-    agent = Agent(workdir=credentials_endpoint,
-                  material=material,
-                  local_agent=local_agent)
-    
-    # agent.locarun(4.991452365949993)
+    # Test local agent
+
+    # Make sure all functions are callable for the instance
+    email_tools = local_agent._email_tools()
+    print(email_tools[0](), "!")
+    print("*" * 20)
+    print(email_tools[1]("Anita2 <anita.sharma@gmail.com>", "testing", "hello dear, i am testing, bye"), "!")
+    print("*" * 20)
+    print(email_tools[2]("test"), "!")
+    print("*" * 20)
+    calendar_tools = local_agent._calendar_tools()
+    events = calendar_tools[0]()
+    if len(events) == 0:
+        print("!")
+    for event in events:
+        print(event, "|")
+    print("*" * 20)
+    print(calendar_tools[1]("2025-05-01T00:00:00", "2025-05-03T00:00:00", "testing", "nuff said"), "!")
+    print("*" * 20)
+    print(calendar_tools[2]("2025-04-22T00:00:00", "2025-05-04T00:00:00"))
+    print("*" * 20)
+    print(calendar_tools[3]())
+
+    # POV: You are the receiving agent
+    # instance = local_agent._initialize_agent(initiating_agent=False)
+
+    # POV: You are the initiating agent
+    instance = local_agent._initialize_agent(initiating_agent=True, task="Do you have any free time next week for a 1-hour slot for a meeting? To talk about the NDSS submission")
+
+    # print("\n"*3)
+    # print(instance.memory.system_prompt.to_messages()[0]['content'][0]['text'])
+    # for step in instance.memory.steps:
+    #     print(step)
     # exit(0)
+    
+    # Launch the agent via gradio
+    ui = GradioUI(instance)
+    ui.launch()
 
-    if mode == "listen":
-        agent.listen()
-    else:
-        # Get endpoint for other agent
-        other_user_config = UserConfig.load(other_user_config_path, drop_extra_fields=False)
-        other_agent_credentials_endpoint = f"{other_user_config.email}:{other_user_config.agents[AGENT_FOCUS].name}"
-        print(other_agent_credentials_endpoint)
-        agent.connect(other_agent_credentials_endpoint, "Hey - how are you?")
 
 
 if __name__ == "__main__":
     # Get path to config file
     import sys
-    mode = sys.argv[1]
-    if mode not in ["listen", "query"]:
-        raise ValueError("Mode (first argument) must be either 'listen' or 'query'")
-    config_path = sys.argv[2]
-    other_user_config_path = sys.argv[3] if len(sys.argv) > 3 else None
+    config_path = sys.argv[1]
     
-    if mode == "query" and other_user_config_path is None:
-        raise ValueError("Endpoint (third argument) must be provided in query mode")
-    main(mode=mode,
-         config_path=config_path,
-         other_user_config_path=other_user_config_path)
+    main(config_path=config_path)

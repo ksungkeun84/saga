@@ -12,6 +12,7 @@ from saga.config import ROOT_DIR
 from agent_backend.tools.email import LocalEmailClientTool
 from agent_backend.tools.calendar import LocalCalendarTool
 from datetime import datetime
+import importlib.resources
 
 
 class AgentWrapper:
@@ -178,11 +179,28 @@ class AgentWrapper:
             """
             return self.calendar_client.get_availability(time_from, time_to)
 
+        @tool
+        def get_general_preferences() -> str:
+            """
+            This is a tool that returns the general preferences for the user for meeting times/days that work for them.
+            Returns a string describing the preferences.
+            """
+            return self.calendar_client.get_preference()
+
+        @tool
+        def get_email() -> str:
+            """
+            Get the email of the current user.
+            """
+            return self.calendar_client.user_email
+
 
         tools_available = [
             get_upcoming_events,
             add_calendar_event,
-            get_availability
+            get_availability,
+            get_general_preferences,
+            get_email
         ]
         return tools_available
 
@@ -201,7 +219,7 @@ class AgentWrapper:
     def _create_local_agent_object(self, **kwargs) -> MultiStepAgent:
         raise NotImplementedError("Child class should implement _create_local_agent_object()")
 
-    def _initialize_agent(self, initiating_agent: bool) -> MultiStepAgent:
+    def _initialize_agent(self, initiating_agent: bool, task: str = None) -> MultiStepAgent:
         if initiating_agent:
             preamble = self.custom_prompt["initiating_agent"]
         else:
@@ -212,6 +230,8 @@ class AgentWrapper:
         today_date = datetime.now().strftime("%A, %B %d, %Y")
         template_text = self.custom_prompt["system_prompt"].replace("[[[preamble]]]", preamble).replace("[[[task_finished_token]]]", self.task_finished_token).replace("[[[today_date]]]", today_date)
         # Use this template text
+        if task is not None:
+            template_text = template_text.replace("[[[task]]]", task)
 
         agent = self._create_local_agent_object(template_text=template_text)
 
@@ -227,7 +247,8 @@ class AgentWrapper:
         # Overhead for new agent creation is low enough that it is not a problem.
 
         if agent_instance is None:
-            agent_instance = self._initialize_agent(initiating_agent)
+            task_str = query if initiating_agent else None
+            agent_instance = self._initialize_agent(initiating_agent, task=task_str)
 
         # Make sure kwargs do not specify reset (should be False)
         if "reset" in kwargs:
@@ -255,27 +276,21 @@ class CodeAgentWrapper(AgentWrapper):
                          prompt_filename="CodeAgent.yaml")
     
     def _create_local_agent_object(self, **kwargs) -> CodeAgent:
+
+        # Start with the default template
+        starting_prompt_template = yaml.safe_load(
+            importlib.resources.files("smolagents.prompts").joinpath("code_agent.yaml").read_text()
+        )
+        # Replace the system-prompt with our own system prompt
+        starting_prompt_template['system_prompt'] = kwargs['template_text']
+
         agent = CodeAgent(
             tools = self.tool_collections,
             model = self.model,
             add_base_tools = True,
             additional_authorized_imports=self.config.additional_authorized_imports,
             verbosity_level=2,
-            # system_prompt=self.prompt_for_agent
-        )
-
-        # Override the system template
-        agent.system_prompt = populate_template(
-            kwargs['template_text'],
-            variables={
-                "tools": agent.tools,
-                "managed_agents": agent.managed_agents,
-                "authorized_imports": (
-                    "You can import from any package you want."
-                    if "*" in agent.authorized_imports
-                    else str(agent.authorized_imports)
-                ),
-            },
+            prompt_templates=starting_prompt_template
         )
 
         return agent
@@ -296,7 +311,6 @@ class ToolCallingAgentWrapper(AgentWrapper):
         agent = ToolCallingAgent(
             tools = self.tool_collections,
             model = self.model,
-            # add_base_tools = True,
             verbosity_level=2
         )
 
