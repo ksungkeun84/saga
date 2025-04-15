@@ -1,4 +1,3 @@
-import fnmatch
 import ssl
 from flask import Flask, request, jsonify
 from flask_bcrypt import Bcrypt
@@ -172,7 +171,6 @@ class Provider:
             The user MUST be authenticated to register an agent. The user must provide their
             UID and a valid JWT in the request body.
 
-            TODO: Check for duplicate material in the database.
             """
             self.monitor.start("provider:agent_register")
             # Retrieve the user's uid and JWT from the request body.
@@ -231,6 +229,17 @@ class Provider:
             device = application.get("device")
             ip = application.get("IP")
             port = application.get("port")
+
+            # Ensure that IP+port is unique:
+            existing = self.agents_collection.find_one({
+                "IP": ip,
+                "port": port
+            })
+    
+            if existing is not None:
+                logger.error(f"Address {ip}:{port} is already registered by agent {existing['aid']}")
+                return jsonify({"message": f"Address {ip}:{port} is already registered by agent {existing['aid']}"})
+
             # Build the device and network information block.
             # The block includes:
             # - the aid, 
@@ -343,7 +352,6 @@ class Provider:
             stamp = self.SK_Prov.sign(card_bytes) # universal stamp 
             # Convert signagure to bytes:
             stamp_bytes = base64.b64encode(stamp).decode("utf-8")
-            
 
             self.agents_collection.insert_one({
                 "aid": aid,
