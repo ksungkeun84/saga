@@ -44,7 +44,7 @@ media_preferences:
 agents:
   - name: "email_calendar_agent"
     model_type: "OpenAIServerModel"
-    base_agent_type: "ToolCallingAgent"
+    base_agent_type: "CodeAgent"
     api_base: "http://192.168.2.59:8000/v1"
     description: "An agent that can send and receive emails and interact with the user's calendar."
     model: "Qwen/Qwen2.5-72B-Instruct"
@@ -52,7 +52,6 @@ agents:
       "datetime"
     ]
     tools:
-      - email
       - calendar
     endpoint:
       ip: 192.168.2.59

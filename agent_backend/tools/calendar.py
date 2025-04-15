@@ -20,6 +20,14 @@ class LocalCalendarTool(BaseTool):
             "end_day": "Friday"
         }
     
+    def get_preference(self):
+        return "Any time between {} and {} between {} and {} in the week".format(
+            self.policy["start_time"],
+            self.policy["end_time"],
+            self.policy["start_day"],
+            self.policy["end_day"]
+        )
+
     def seed_data(self, data: List[dict]):
         db = self.client.get_database(self.tool_name)
         collection_self = db.get_collection(self.user_email)
