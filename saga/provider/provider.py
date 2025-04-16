@@ -1,4 +1,3 @@
-import fnmatch
 import ssl
 from flask import Flask, request, jsonify
 from flask_bcrypt import Bcrypt
@@ -91,6 +90,7 @@ class Provider:
             provide their desired UID (public) and password (private). The user must also 
             provide their public identity key for signing. 
             """
+            self.monitor.start("provider:user_register")
             # Retrieve the user's uid and password from the request body.
             data = request.json
             uid = data.get("uid")
@@ -119,6 +119,8 @@ class Provider:
                 "auth_tokens": []
             })
 
+            self.monitor.stop("provider:user_register")
+            logger.log("OVERHEAD", f"provider:user_register: {self.monitor.elapsed('provider:user_register')}")
             return jsonify({"message": "User registered successfully"}), 201
 
         @self.app.route('/login', methods=['POST'])
@@ -131,6 +133,7 @@ class Provider:
             The access token is valid for 24 hours.
             """
             # Retrieve the user's uid and password from the request body.
+            self.monitor.start("provider:user_login")
             data = request.json
             uid = data.get("uid")
             password = data.get("password")
@@ -144,9 +147,13 @@ class Provider:
                     "exp": (datetime.now(timezone.utc) + timedelta(days=1)).replace(tzinfo=timezone.utc)
                 }}})
                 logger.log("PROVIDER", f"User {uid} logged in successfully.")
+                self.monitor.stop("provider:user_login")
+                logger.log("OVERHEAD", f"provider:user_login: {self.monitor.elapsed('provider:user_login')}")
                 return jsonify({"access_token": access_token}), 200
             
             logger.error(f"Invalid credentials for user {uid}.")
+            self.monitor.stop("provider:user_login")
+            logger.log("OVERHEAD", f"provider:user_login: {self.monitor.elapsed('provider:user_login')}")
             return jsonify({"message": "Invalid credentials"}), 401
 
         @self.app.route('/register_agent', methods=['POST'])
@@ -163,7 +170,9 @@ class Provider:
 
             The user MUST be authenticated to register an agent. The user must provide their
             UID and a valid JWT in the request body.
+
             """
+            self.monitor.start("provider:agent_register")
             # Retrieve the user's uid and JWT from the request body.
             data = request.json
             uid = data.get("uid")
@@ -220,6 +229,17 @@ class Provider:
             device = application.get("device")
             ip = application.get("IP")
             port = application.get("port")
+
+            # Ensure that IP+port is unique:
+            existing = self.agents_collection.find_one({
+                "IP": ip,
+                "port": port
+            })
+    
+            if existing is not None:
+                logger.error(f"Address {ip}:{port} is already registered by agent {existing['aid']}")
+                return jsonify({"message": f"Address {ip}:{port} is already registered by agent {existing['aid']}"})
+
             # Build the device and network information block.
             # The block includes:
             # - the aid, 
@@ -332,7 +352,6 @@ class Provider:
             stamp = self.SK_Prov.sign(card_bytes) # universal stamp 
             # Convert signagure to bytes:
             stamp_bytes = base64.b64encode(stamp).decode("utf-8")
-            
 
             self.agents_collection.insert_one({
                 "aid": aid,
@@ -353,6 +372,8 @@ class Provider:
             # Pop the JWT from the user's record so that it cannot be reused for other purposes.
             self.users_collection.update_one({"uid": uid}, {"$pull": {"auth_tokens": {"token": user_jwt}}})
             logger.log("PROVIDER", f"Agent {aid} registered successfully.")
+            self.monitor.stop("provider:agent_register")
+            logger.log("OVERHEAD", f"provider:agent_register: {self.monitor.elapsed('provider:agent_register')}")
             return jsonify({"message": "Agent registered successfully", "stamp": stamp_bytes}), 201
 
         @self.app.route('/access', methods=['POST'])
@@ -368,7 +389,7 @@ class Provider:
             along with all other relevant cryptographic material of the receiving agent.
             """
             # Start stopwatch
-            self.monitor.start("alg_access")
+            self.monitor.start("provider:access")
             # Convert PEM format string to bytes            
             i_aid_cert_bytes = request.environ.get('SSL_CLIENT_CERT').encode('utf-8')  # Extracts iniating agents's certificate
         
@@ -535,8 +556,8 @@ class Provider:
             t_agent_metadata.pop("counter", None)
 
             # Stop stopwatch:
-            self.monitor.stop("alg_access")
-            logger.log("OVERHEAD", f"alg_access: {self.monitor.elapsed('alg_access')}")
+            self.monitor.stop("provider:access")
+            logger.log("OVERHEAD", f"provider:access: {self.monitor.elapsed('provider:access')}")
             return jsonify(t_agent_metadata), 200
     
     def run(self):

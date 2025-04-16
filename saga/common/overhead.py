@@ -28,9 +28,13 @@ class Monitor:
         Stops the stopwatch and accumulates the elapsed time.
         """
         now = Monitor.f_time()
-        run = self._runs.get(run_id)
-        if not run or run.get("start") is None:
-            raise ValueError(f"Cannot stop timer: run ID '{run_id}' was never started.")
+        run = self._runs.get(run_id, None)
+        if run is None:
+            # Do nothing
+            return
+        if run["start"] is None:
+            # Already stopped
+            return
         elapsed = now - run["start"]
         run["elapsed"] += elapsed
         run["start"] = None  # timer is stopped
@@ -42,9 +46,6 @@ class Monitor:
         run = self._runs.get(run_id)
         if not run:
             raise ValueError(f"No timing data for run ID: {run_id}")
-        if run["start"] is not None:
-            # Include current running time
-            return run["elapsed"] + (Monitor.f_time() - run["start"])
         return run["elapsed"]
 
     def elapsed_all(self):

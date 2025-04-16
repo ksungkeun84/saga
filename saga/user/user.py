@@ -8,6 +8,7 @@ from saga.ca.CA import get_SAGA_CA
 import os
 import json
 from saga.common.logger import Logger as logger
+from saga.common.overhead import Monitor
 
 
 def get_provider_cert(email):
@@ -35,12 +36,13 @@ state = {}
 state['keys'] = {}
 state['agents'] = {}
 
+monitor = Monitor()
 
 def register(email=None, password=None):
 
     email = input("Enter email: ") if email is None else email
     password = input("Enter password: ") if password is None else password
-
+    monitor.start("user:user_register")
     logger.log("USER", f"Generating user cryptographic material...")
     # Generate user signing key pair:
     sk_u, pk_u = sc.generate_ed25519_keypair()
@@ -60,6 +62,8 @@ def register(email=None, password=None):
     sc.save_ed25519_keys(saga.config.USER_WORKDIR+"/keys/"+email, sk_u, pk_u)
     sc.save_x509_certificate(saga.config.USER_WORKDIR+"/keys/"+email, user_cert)
 
+    monitor.stop("user:user_register")
+    logger.log("OVERHEAD", f"user:user_register: {monitor.elapsed('user:user_register')}")
     response = requests.post(f"{saga.config.PROVIDER_URL}/register", json={
         'uid': email, # uid
         'password': password, # pwd 
@@ -140,6 +144,7 @@ def register_agent(name=None, device=None, IP=None, port=None, num_one_time_keys
     else:
         contact_rulebook = contact_rulebook
 
+    monitor.start("user:agent_register")
 
     # Assign the aid:
     aid = state['uid'] + ":" + name
@@ -243,6 +248,8 @@ def register_agent(name=None, device=None, IP=None, port=None, num_one_time_keys
         'otk_sigs': otk_sigs_2_b64, 
     }
 
+    monitor.stop("user:agent_register")
+
     response = requests.post(f"{saga.config.PROVIDER_URL}/register_agent", json={
         'uid': state['uid'], # The user's uid
         'jwt': provider_tokens[-1], # Provider's JWT
@@ -250,7 +257,8 @@ def register_agent(name=None, device=None, IP=None, port=None, num_one_time_keys
     }, verify=saga.config.CA_CERT_PATH, cert=(
         saga.config.USER_WORKDIR+"/keys/"+state['uid']+".crt", saga.config.USER_WORKDIR+"/keys/"+state['uid']+".key"
     ))
-
+    
+    monitor.start("user:agent_register")
     # Based on the provider's response, store the agent's cryptographic material
     if response.status_code == 201:  
         # Save the agent's cryptographic material
@@ -291,7 +299,8 @@ def register_agent(name=None, device=None, IP=None, port=None, num_one_time_keys
         spawn_agent(application)
     else:
         logger.log("PROVIDER", f"Agent registration failed: {response.json()}")
-        return None
+    monitor.stop("user:agent_register")
+    logger.log("OVERHEAD", f"user:agent_register: {monitor.elapsed('user:agent_register')}")
 
 def spawn_agent(application):
     # Create agent directory if not exists:

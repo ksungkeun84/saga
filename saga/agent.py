@@ -3,7 +3,6 @@
 Agent class for the SAGA system.
 
 """
-import fnmatch
 import threading
 import time
 import json
@@ -423,10 +422,13 @@ class Agent:
             # Check if the received token that you are using is valid:
             if not self.received_token_is_valid(msg["token"]):
                 logger.error("Token is invalid. Ending conversation...")
+                self.monitor.stop("agent:communication_conv_init")
                 return True
 
             # Send message:
+            self.monitor.stop("agent:communication_conv_init")
             conn.sendall(json.dumps(msg).encode('utf-8'))
+            self.monitor.start("agent:communication_conv_init")
             logger.log("AGENT", f"Sent: \'{msg['msg']}\'")
 
             # Reduce the remaining quota for the token:
@@ -443,11 +445,15 @@ class Agent:
                     # remove the token from the aid_to_token dict:
                     del self.aid_to_token[r_aid]
                     logger.log("ACCESS", "Token invalidated from the initiating side.")
+                self.monitor.stop("agent:communication_conv_init")
                 return True
             # Receive response:
+            self.monitor.stop("agent:communication_conv_init")
             response = conn.recv(MAX_BUFFER_SIZE)
+            self.monitor.start("agent:communication_conv_init")
             if not response:
                 logger.warn("Received b'' indicating that the connection might have been closed from the other side. Returning...")
+                self.monitor.stop("agent:communication_conv_init")
                 return False
             response = json.loads(response.decode('utf-8'))
 
@@ -463,13 +469,17 @@ class Agent:
                     # remove the token from the aid_to_token dict:
                     del self.aid_to_token[r_aid]
                     logger.log("ACCESS", "Token invalidated from the receiving side.")
+                self.monitor.stop("agent:communication_conv_init")
                 return False
             
             # Process message:
             if i > MAX_QUERIES:
                 logger.warn("Maximum allowed number of queries in the conversation is reached. Ending conversation...")
+                self.monitor.stop("agent:communication_conv_init")
                 return True
+            self.monitor.stop("agent:communication_conv_init")
             agent_instance, text = self.local_agent.run(received_message, initiating_agent=True, agent_instance=agent_instance)
+            self.monitor.start("agent:communication_conv_init")
             i += 1 # increment queries counter
 
     def receive_conversation(self, conn, token: str, recipient_pac) -> bool:
@@ -481,9 +491,12 @@ class Agent:
         while True: 
             
             # Receive message from the initiating side:
+            self.monitor.stop("agent:communication_conv_recv")
             message = conn.recv(MAX_BUFFER_SIZE)
+            self.monitor.start("agent:communication_conv_recv")
             if not message:
                 logger.warn("Received b'' indicating that the connection might have been closed from the other side. Returning...")
+                self.monitor.stop("agent:communication_conv_recv")
                 return False
             
             # If the message is not empty, process it:
@@ -495,6 +508,7 @@ class Agent:
             # Check if the token of the message is valid
             if not self.token_is_valid(token, recipient_pac):
                 logger.error("Token is invalid. Ending conversation...")
+                self.monitor.stop("agent:communication_conv_recv")
                 return True
             
             # Reduce the remaining quota for the token:
@@ -513,15 +527,19 @@ class Agent:
                     # remove the token from the active tokens:
                     del self.active_tokens[token]
                     logger.log("ACCESS", "Token invalidated from the initiating side.")
+                self.monitor.stop("agent:communication_conv_recv")
                 return False
 
             # Check if too many queries have been sent to your llm resources:
             if i > MAX_QUERIES:
                 logger.warn("Maximum allowed number of queries in the conversation is reached. Ending conversation...")
+                self.monitor.stop("agent:communication_conv_recv")
                 return True
 
             # Get agent response:
+            self.monitor.stop("agent:communication_conv_recv")
             agent_instance, response = self.local_agent.run(query=received_message, initiating_agent=False, agent_instance=agent_instance)
+            self.monitor.start("agent:communication_conv_recv")
             i+=1 # increase query counter
             
             # Prepare response:
@@ -530,7 +548,9 @@ class Agent:
                 "token": token
             }
             # Send response:
+            self.monitor.stop("agent:communication_conv_recv")
             conn.sendall(json.dumps(response_dict).encode('utf-8'))
+            self.monitor.start("agent:communication_conv_recv")
             logger.log("AGENT", f"Sent: \'{response_dict['msg']}\'")
 
             if response_dict['msg'] == self.task_finished_token:
@@ -540,12 +560,13 @@ class Agent:
                     # remove the token from the active tokens:
                     del self.active_tokens[token]
                     logger.log("ACCESS", "Token invalidated from the receiving side.")
+                self.monitor.stop("agent:communication_conv_recv")
                 return True
 
     def connect(self, r_aid, message: str):
 
         # Start measuring algo overhead:
-        self.monitor.start("alg_init")
+        self.monitor.start("agent:communication_proto_init")
 
         # Get everything you need to reach the receiving agent from the provider:
 
@@ -560,9 +581,9 @@ class Agent:
             # Fetch agent information from the provider:
             logger.log("ACCESS", f"No valid token found for {r_aid}.")
             logger.log("ACCESS", f"Requesting access to {r_aid} via the Provider.")
-            self.monitor.stop("alg_init")
+            self.monitor.stop("agent:communication_proto_init")
             r_agent_material = self.access(r_aid)
-            self.monitor.start("alg_init")
+            self.monitor.start("agent:communication_proto_init")
 
         if r_agent_material is None:
             logger.log("ACCESS", f"Access to {r_aid} denied.")
@@ -649,7 +670,7 @@ class Agent:
         self.previously_contacted_agents[r_aid] = r_agent_material
 
         # Stop measuring algo overhead:
-        self.monitor.stop("alg_init")
+        self.monitor.stop("agent:communication_proto_init")
 
         # Create SSL context for the client
         context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
@@ -667,7 +688,7 @@ class Agent:
                     logger.log("NETWORK", f"Connected to {r_ip}:{r_port} with verified certificate.")
 
                     # Start measuring algo overhead:
-                    self.monitor.start("alg_init")
+                    self.monitor.start("agent:communication_proto_init")
 
                     # Prepare the request:
                     request_dict = {}
@@ -705,7 +726,7 @@ class Agent:
                         # it to the receiving agent.                        
                         request_dict['token'] = token
                     # Stop the stopwatch
-                    self.monitor.stop("alg_init")
+                    self.monitor.stop("agent:communication_proto_init")
 
                     # Encode the request as JSON
                     request_json = json.dumps(request_dict).encode('utf-8')
@@ -716,12 +737,13 @@ class Agent:
                     response = conn.recv(MAX_BUFFER_SIZE)
 
                     # Restart the stopwatch:
-                    self.monitor.start("alg_init")
+                    self.monitor.start("agent:communication_proto_init")
                     
                     if token is None and response:
                         # If no valid token was found, the expected response is a token.
                         response_dict = json.loads(response.decode('utf-8'))
                         
+                        self.monitor.start("agent:token_init")
                         # Diffie hellman calculations:
                         r_otk = sc.bytesToPublicX25519Key(r_otk)
                         DH = self.sac.exchange(r_otk)
@@ -749,13 +771,15 @@ class Agent:
                         token_dict = sc.decrypt_token(new_enc_token_str, SDHK)
                         # Store the token:
                         self.store_received_token(r_aid, new_enc_token_str, token_dict)
-                        
+                        self.monitor.stop("agent:token_init")
+                        logger.log("OVERHEAD", f"agent:token_init: {self.monitor.elapsed('agent:token_init')}")
                         # Stop the stopwatch:
-                        self.monitor.stop("alg_init")
-                        logger.log("OVERHEAD", f"alg_init: {self.monitor.elapsed('alg_init')}")
+                        self.monitor.stop("agent:communication_proto_init")
+                        logger.log("OVERHEAD", f"agent:communication_proto_init: {self.monitor.elapsed('agent:communication_proto_init')}")
 
                         # Start the conversation:
-                        self.initiate_conversation(conn, new_enc_token_str, r_aid, message)         
+                        self.initiate_conversation(conn, new_enc_token_str, r_aid, message)
+                        logger.log("OVERHEAD", f"agent:communication_conv_init: {self.monitor.elapsed('agent:communication_conv_init')}")
                     else:
                         logger.log("ACCESS", f"Valid token found. Will start conversation.")
                         # If a valid token was found, the expected response is a message.
@@ -763,10 +787,10 @@ class Agent:
                             response_dict = json.loads(response.decode('utf-8'))
                             if response_dict["token"] is not None:
                                 # Stop the stopwatch:
-                                self.monitor.stop("alg_init")
-                                logger.log("OVERHEAD", f"alg_init: {self.monitor.elapsed('alg_init')}")
-
+                                self.monitor.stop("agent:communication_proto_init")
+                                logger.log("OVERHEAD", f"agent:communication_proto_init: {self.monitor.elapsed('agent:communication_proto_init')}")
                                 self.initiate_conversation(conn, token, r_aid, message)
+                                logger.log("OVERHEAD", f"agent:communication_conv_init: {self.monitor.elapsed('agent:communication_conv_init')}")
                             else:
                                 logger.error("Token rejected from receiving side.")
                                 
@@ -797,7 +821,7 @@ class Agent:
             data = conn.recv(MAX_BUFFER_SIZE)
             if data:
                     # Start the stopwatch:
-                    self.monitor.start("alg_recv")
+                    self.monitor.start("agent:communication_proto_recv")
                     try:
                         # Decode and parse JSON data
                         received_msg = json.loads(data.decode('utf-8'))
@@ -920,6 +944,7 @@ class Agent:
                         # Check if the initiating agent has a token:
                         i_token = received_msg.get("token", None)
                         if i_token is None:
+                            self.monitor.start("agent:token_recv")
                             # The initiating agent does not have a token. 
                             logger.log("ACCESS", f"No valid received token found. For {i_aid}. Generating new one.")
                             
@@ -966,26 +991,30 @@ class Agent:
                             with self.active_tokens_lock:
                                 self.active_tokens[enc_token_str] = sc.decrypt_token(enc_token_str, SDHK)
 
+                            self.monitor.stop("agent:token_recv")
+                            logger.log("OVERHEAD", f"agent:token_recv: {self.monitor.elapsed('agent:token_recv')}")
                             # Stop the stopwatch
-                            self.monitor.stop("alg_recv")
-                            logger.log("OVERHEAD", f"alg_recv: {self.monitor.elapsed('alg_recv')}")
+                            self.monitor.stop("agent:communication_proto_recv")
+                            logger.log("OVERHEAD", f"agent:communication_proto_recv: {self.monitor.elapsed('agent:communication_proto_recv')}")
 
                             conn.sendall(ser_token_response)
 
                             # Start the conversation:
                             logger.log("AGENT", f"Starting conversation with {i_aid}.")
                             self.receive_conversation(conn, enc_token_str, i_pac)
+                            logger.log("OVERHEAD", f"agent:communication_conv_recv: {self.monitor.elapsed('agent:communication_conv_recv')}")
                         else:
                             # Check the token and see if it is in the active tokens:
                             if self.token_is_valid(i_token, i_pac):
                                 # Stop the stopwatch
-                                self.monitor.stop("alg_recv")
-                                logger.log("OVERHEAD", f"alg_recv: {self.monitor.elapsed('alg_recv')}")
+                                self.monitor.stop("agent:communication_proto_recv")
+                                logger.log("OVERHEAD", f"agent:communication_proto_recv: {self.monitor.elapsed('agent:communication_proto_recv')}")
 
                                 # If the token is valid, start the conversation:
                                 logger.log("ACCESS", f"Valid token found. Will accept conversation.")
                                 conn.sendall(json.dumps({"token": i_token}).encode('utf-8'))
                                 self.receive_conversation(conn, i_token, i_pac)
+                                logger.log("OVERHEAD", f"agent:communication_conv_recv: {self.monitor.elapsed('agent:communication_conv_recv')}")
                             else:
                                 logger.error("Token is invalid. Ending connection.")
 
