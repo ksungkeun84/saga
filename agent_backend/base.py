@@ -5,6 +5,7 @@ from typing import List
 from typing import Tuple
 from smolagents import tool
 from smolagents import populate_template
+from smolagents.memory import TaskStep
 import os
 
 from saga.config import ROOT_DIR
@@ -13,6 +14,9 @@ from agent_backend.tools.email import LocalEmailClientTool
 from agent_backend.tools.calendar import LocalCalendarTool
 from datetime import datetime
 import importlib.resources
+
+
+VERBOSITY_LEVEL = 2
 
 
 class AgentWrapper:
@@ -62,7 +66,8 @@ class AgentWrapper:
             model = OpenAIServerModel(
                 model_id=self.config.model,
                 api_base=self.config.api_base,
-                api_key=self.config.api_key
+                api_key=self.config.api_key,
+                temperature=0.0
             )
         else:
             raise ValueError(f"Model type {self.config.model_type} not supported.")
@@ -84,50 +89,114 @@ class AgentWrapper:
         
         # TODO: logic to make sure not duplicates are created in process of collecting all functions
 
+    def _reimbursement_tools(self):
+        # Tools relevant to submitting an expense report to HR
+        # Initialize only if it does not exist already
+        if not hasattr(self, "email_client"):
+            self.email_client = LocalEmailClientTool(user_name=self.user_config.name,
+                                                     user_email=self.user_config.email)
+        
+        @tool
+        def submit_expense_report(amount: float, description: str, people_involved: List[str]) -> bool:
+            """
+                This is a tool that submits an expense report to HR with the amount and description.
+                It also makes sure that all people related to the expenses are CC'd on the expense report.
+                Returns True if the report is submitted successfully, False otherwise.
+
+                Args:
+                    amount: The total amount of the expense.
+                    description: The description of the expense.
+                    people_involved: List of email addresses of people involved in the expense.
+            """
+            to = ["hr@university.com"] + people_involved
+            subject = "Expense Report"
+            body = "Hi,\nPlease find attached the total cost of the expenses. All people associated with the expenses are CC'd on this email.\n\nTotal cost: " + str(amount) + "\n\nDescription: " + description + "\n\nThanks,\n" + self.user_config.name
+            return self.email_client.send_email(to=to, subject=subject, body=body)
+
+        return [
+            submit_expense_report
+        ]
+
     def _email_tools(self):
         # Define relevant tools for email use
         self.email_client = LocalEmailClientTool(user_name=self.user_config.name,
                                                  user_email=self.user_config.email)
 
         @tool
-        def check_inbox(limit: int = 10) -> List[dict]:
+        def check_inbox(limit: int = 50) -> List[dict]:
             """
             This is a tool that checks the inbox of the user, and returns the most recent emails.
             It returns a list of dictionaries containing the email details.
 
             Args:
+                limit: The number of emails to retrieve. Defaults to 50. When set to None, all emails are retrieved.
+            """
+            inbox_emails = self.email_client.get_emails(where="inbox", limit=limit)
+            return inbox_emails
+    
+        @tool
+        def check_outbox(limit: int = 10) -> List[dict]:
+            """
+            This is a tool that checks the outbox of the user, and returns the most recent emails.
+            It returns a list of dictionaries containing the email details.
+
+            Args:
                 limit: The number of emails to retrieve. Defaults to 10. When set to None, all emails are retrieved.
             """
-            return self.email_client.get_emails(limit=limit)
+            return self.email_client.get_emails(where="sent", limit=limit)
+
         
         @tool
-        def send_email(to: str, subject: str, body: str) -> bool:
+        def send_email(to: List[str], subject: str, body: str) -> bool:
             """
-            This is a tool that sends an email to the specified recipient.
+            This is a tool that sends an email to the specified recipient. To cc someone, add them in the list of recipients.
             Returns True if the email was sent successfully, False otherwise.
 
             Args:
-                to: The recipient of the email.
+                to: List of recipients to send the email to (their emails).
                 subject: The subject of the email.
                 body: The body of the email.
             """
             return self.email_client.send_email(to=to, subject=subject, body=body)
     
         @tool
-        def search_emails_by_query(query: str) -> List[dict]:
+        def search_inbox(query: str) -> List[dict]:
             """
-            This is a tool that searches for emails in the inbox that match the query.
-            Returns a list of dictionaries containing the email details.
+            This is a tool that searches for emails in the inbox that match the query (normal keyword search, not semantic).
+            This function is not perfect and may miss out on some results.
+            Returns a list of dictionaries containing the email details, sorted by time.
 
             Args:
                 query: The query to search for.
             """
-            return self.email_client.search_emails_by_query(query=query)
+            return self.email_client.search_by_query(query=query, where="inbox")
+
+        @tool
+        def search_outbox(query: str) -> List[dict]:
+            """
+            This is a tool that searches for emails in the outbox that match the query (normal keyword search, not semantic).
+            This function is not perfect and may miss out on some results.
+            Returns a list of dictionaries containing the email details, sorted by time.
+
+            Args:
+                query: The query to search for.
+            """
+            return self.email_client.search_by_query(query=query, where="sent")
+
+        @tool
+        def get_my_email() -> str:
+            """
+            Get the email ID of the current user (self).
+            """
+            return self.email_client.user_email
 
         tools_available = [
             check_inbox,
+            check_outbox,
             send_email,
-            search_emails_by_query
+            # search_inbox,
+            # search_outbox,
+            get_my_email
         ]
 
         return tools_available
@@ -188,9 +257,9 @@ class AgentWrapper:
             return self.calendar_client.get_preference()
 
         @tool
-        def get_email() -> str:
+        def get_my_email() -> str:
             """
-            Get the email of the current user.
+            Get the email ID of the current user (self).
             """
             return self.calendar_client.user_email
 
@@ -200,7 +269,7 @@ class AgentWrapper:
             add_calendar_event,
             get_availability,
             get_general_preferences,
-            get_email
+            get_my_email
         ]
         return tools_available
 
@@ -221,7 +290,8 @@ class AgentWrapper:
 
     def _initialize_agent(self, initiating_agent: bool, task: str = None) -> MultiStepAgent:
         if initiating_agent:
-            preamble = self.custom_prompt["initiating_agent"]
+            # preamble = self.custom_prompt["initiating_agent"]
+            preamble = ""
         else:
             preamble = self.custom_prompt["receiving_agent"]
         
@@ -234,6 +304,10 @@ class AgentWrapper:
             template_text = template_text.replace("[[[task]]]", task)
 
         agent = self._create_local_agent_object(template_text=template_text)
+
+        if initiating_agent:
+            # Override this agent to simulate history of the agent having started the conversation
+            agent.memory.steps.append(TaskStep(task=self.custom_prompt["initiating_agent"]))
 
         return agent
 
@@ -260,6 +334,12 @@ class AgentWrapper:
         # Replace "The task is completed." with self.task_finished_token
         if response == "The task is completed.":
             response = self.task_finished_token
+        
+        # print("\n"*3)
+        # for step in agent_instance.memory.steps:
+        #     print(step)
+        #     print()
+        # print("\n"*3)
 
         return agent_instance, response
 
@@ -289,7 +369,7 @@ class CodeAgentWrapper(AgentWrapper):
             model = self.model,
             add_base_tools = True,
             additional_authorized_imports=self.config.additional_authorized_imports,
-            verbosity_level=2,
+            verbosity_level=VERBOSITY_LEVEL,
             prompt_templates=starting_prompt_template
         )
 
@@ -311,7 +391,7 @@ class ToolCallingAgentWrapper(AgentWrapper):
         agent = ToolCallingAgent(
             tools = self.tool_collections,
             model = self.model,
-            verbosity_level=2
+            verbosity_level=VERBOSITY_LEVEL
         )
 
         # Override the system template

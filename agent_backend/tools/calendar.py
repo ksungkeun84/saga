@@ -41,7 +41,7 @@ class LocalCalendarTool(BaseTool):
             for participant in participants:
                 participant_email = self._get_email_from_field(participant)
 
-                # Insert into recipient inbox collection, as long as the receipient is not self
+                # Insert into recipient calendar collection, as long as the receipient is not self
                 if participant_email != self.user_email:
                     collection_participant = db.get_collection(participant_email)
                     collection_participant.insert_one(event)

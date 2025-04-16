@@ -1,3 +1,8 @@
+""""
+
+Agent class for the SAGA system.
+
+"""
 import fnmatch
 import threading
 import time
@@ -21,12 +26,9 @@ from saga.ca.CA import get_SAGA_CA
 DEBUG = False
 MAX_BUFFER_SIZE = 8*1024
 MAX_QUERIES = 100
-""""
 
-Agent class for the SAGA system.
-
-"""
 import saga.common.crypto as sc
+
 
 def get_agent_material(dir_path: Path):
     # Check if dir exists:

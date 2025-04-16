@@ -5,10 +5,11 @@
 import os
 import json
 from agent_backend.config import UserConfig
+from pymongo import MongoClient
 
 from agent_backend.tools.calendar import LocalCalendarTool
 from agent_backend.tools.email import LocalEmailClientTool
-from saga.config import ROOT_DIR
+from saga.config import ROOT_DIR, MONGO_URI_FOR_TOOLS
 
 
 def read_jsonl_data(path):
@@ -20,6 +21,15 @@ def read_jsonl_data(path):
 
 
 def main(user_configs_path):
+    # Start with clearing out all tool-related data under
+    mongo_client = MongoClient(MONGO_URI_FOR_TOOLS)
+    # Drop all databases
+    dbs = mongo_client.list_database_names()
+    for db in dbs:
+        if db not in ["admin", "local"]:
+            mongo_client.drop_database(db)
+    print("Dropped all databases in tools mongo!")
+
     PATH_WITH_SEED_DATA = os.path.join(os.path.dirname(ROOT_DIR), "experiments", "data")
     for fpath in os.listdir(user_configs_path):
         config_path = os.path.join(user_configs_path, fpath)
@@ -40,18 +50,17 @@ def main(user_configs_path):
             elif tool == "calendar":
                 tool_obj = LocalCalendarTool(user_name=name, user_email=email)
             else:
-                raise NotImplementedError(f"Tool {tool} not implemented yet.")
-            
-            # Clear out existing data
-            tool_obj._clear_data()
+                print(f"Tool {tool} not implemented yet. Skipping")
+                continue
 
             # Read relevant data from data/, if there is any
             path = os.path.join(PATH_WITH_SEED_DATA, fpath.split(".yaml")[0], f"{tool}.jsonl")
             if os.path.exists(path):
+
                 jsonl_data = read_jsonl_data(path)
                 tool_obj.seed_data(jsonl_data)
                 print("Seeded %s tool data for user %s" % (tool, name))
-    
+
     print("Cleared all users' tool-related data and seeded with provided data!")
 
 

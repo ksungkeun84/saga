@@ -21,9 +21,6 @@ class BaseTool:
             collection.delete_many({})
         client.close()
 
-    def seed_data(self, data: List[dict]):
-        db = self.client.get_database(self.tool_name)
-
     def _get_email_from_field(self, text: str) -> str:
         """
             Field will be in the format "name <email>", or just the email

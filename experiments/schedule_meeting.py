@@ -12,17 +12,11 @@ from saga.agent import Agent, get_agent_material
 from saga.config import ROOT_DIR
 
 
-class Test:
-    def __init__(self, user_config, task: str):
+class MeetingScheduleTest:
+    def __init__(self, user_config):
         self.user_config = user_config
-        self.task = task
-    
-    def success(self):
-        raise NotImplementedError("success() needs to be implemented by child class")
 
-
-class MeetingScheduleTest(Test):
-    def success(self, other_agent_name, other_agent_email):
+    def success(self, other_agent_name, other_agent_email) -> bool:
         """
             Check both their calendars to check whether:
             1. Meeting was scheduled for both agents.
@@ -75,8 +69,13 @@ def main(mode, config_path, other_user_config_path=None):
     AGENT_FOCUS = 0
     config = UserConfig.load(config_path, drop_extra_fields=True)
 
+    # Find the index of the "calendar_agent" out of all config.agents
+    calendar_agent_index = next((i for i, agent in enumerate(config.agents) if agent.name == "calendar_agent"), None)
+    if calendar_agent_index is None:
+        raise ValueError("No agent with name 'calendar_agent' found in the configuration.")
+
     # Initialize local agent
-    local_agent = get_agent(config, config.agents[0])
+    local_agent = get_agent(config, config.agents[calendar_agent_index])
 
     # Focus on first agent - infer credentials endpoint
     credentials_endpoint = os.path.join(ROOT_DIR, f"user/{config.email}:{config.agents[AGENT_FOCUS].name}/")
