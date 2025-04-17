@@ -1,0 +1,111 @@
+"""
+    Ask one agent to collaborate and help write a blogpost together.
+"""
+from agent_backend.config import UserConfig
+from agent_backend.base import get_agent
+import os
+
+from agent_backend.tools.documents import LocalDocumentsTool
+from agent_backend.config import get_index_of_agent
+
+from saga.agent import Agent, get_agent_material
+from saga.config import ROOT_DIR
+
+
+class BlogPostTest:
+    def __init__(self, user_config):
+        self.user_config = user_config
+
+    def success(self, other_agent_email, blogpost_name, filename) -> bool:
+        """
+            Check if the blogpost was:
+            1. One of them created and stored in their files.
+            2. Both their emails are mentioned.
+        """
+        self_documents = LocalDocumentsTool(user_email= self.user_config.email)
+        other_documents = LocalDocumentsTool(user_email=other_agent_email)
+        
+        # TODO- make sure nobody else was invited to the meeting
+        files_self = self_documents.search_by_query(blogpost_name)
+        files_other = other_documents.search_by_query(blogpost_name)
+
+        if len(files_self) == 0 and len(files_other) == 0:
+            print("None of them saved!")
+            return False
+        
+        doc_focus = files_self[0] if len(files_self) > 0 else files_other[0]
+
+        # Check if the blogpost has the same title and content
+        if doc_focus["title"] != filename:
+            print("Blogpost titles do not match")
+            return False
+        
+        if self.user_config.email not in doc_focus["content"]:
+            print("Self email not found in blogpost content")
+            return False
+        
+        if other_agent_email not in doc_focus["content"]:
+            print("Other agent email not found in blogpost content")
+            return False
+
+        return True
+
+
+def main(mode, config_path, other_user_config_path=None):
+    config = UserConfig.load(config_path, drop_extra_fields=True)
+
+    # Find the index of the "writing_agent" out of all config.agents
+    agent_index = get_index_of_agent(config, "writing_agent")
+    if agent_index is None:
+        raise ValueError("No agent with name 'writing_agent' found in the configuration.")
+
+    # Initialize local agent
+    local_agent = get_agent(config, config.agents[agent_index])
+
+    # Focus on first agent - infer credentials endpoint
+    credentials_endpoint = os.path.join(ROOT_DIR, f"user/{config.email}:{config.agents[agent_index].name}/")
+    # Read agent material
+    material = get_agent_material(credentials_endpoint)
+    agent = Agent(workdir=credentials_endpoint,
+                  material=material,
+                  local_agent=local_agent)
+    
+    if mode == "listen":
+        agent.listen()
+    else:
+        # Get endpoint for other agent
+        other_user_config = UserConfig.load(other_user_config_path, drop_extra_fields=True)
+        other_user_agent_index = get_index_of_agent(other_user_config, "writing_agent")
+        other_agent_credentials_endpoint = f"{other_user_config.email}:{other_user_config.agents[other_user_agent_index].name}"
+        print(other_agent_credentials_endpoint)
+        # agent.connect(other_agent_credentials_endpoint, "Please simply repeat '<TASK_FINISHED>'")
+        task = f"Let us collaborate to write a 1500-2000 word blogpost about the implications of privacy in the context of AI. "\
+            "Given your expertise on law and my expertise on ML, we can do a great job! "\
+            "We can use our respective blogposts (you can check yours, I will check mine) to create a template and combine our writing styles. " \
+            "You can start with your views. I will then bring in my perspectives of ML. "\
+            "We can continue to iterate multiple times to refine the blogpost quality. Let's make sure it matches our respective writing styles well, has both of us listed as authors (linked to our emails), flows well, etc. "\
+            "Once we are done finally, one of us should save it as privacy_in_the_age_of_ai.md"
+        agent.connect(other_agent_credentials_endpoint, task)
+
+        # Create test object
+        test = BlogPostTest(config)
+        # Make sure what we wanted happened
+        succeeded = test.success(other_user_config.name, other_user_config.email, filename="privacy_in_the_age_of_ai.md")
+        print("Success:", succeeded)
+
+
+
+if __name__ == "__main__":
+    # Get path to config file
+    import sys
+    mode = sys.argv[1]
+    if mode not in ["listen", "query"]:
+        raise ValueError("Mode (first argument) must be either 'listen' or 'query'")
+    config_path = sys.argv[2]
+    other_user_config_path = sys.argv[3] if len(sys.argv) > 3 else None
+    
+    if mode == "query" and other_user_config_path is None:
+        raise ValueError("Endpoint (third argument) must be provided in query mode")
+    main(mode=mode,
+         config_path=config_path,
+         other_user_config_path=other_user_config_path)

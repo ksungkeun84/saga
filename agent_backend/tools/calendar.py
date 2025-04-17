@@ -81,12 +81,6 @@ class LocalCalendarTool(BaseTool):
         }).sort("time_from", 1)
         events = list(events)
 
-        # Helper to check if a datetime is within policy
-        def is_within_policy(dt):
-            day_name = calendar.day_name[dt.weekday()]
-            return (self.policy["start_day"] <= day_name <= self.policy["end_day"] and
-                    time.fromisoformat(self.policy["start_time"]) <= dt.time() <= time.fromisoformat(self.policy["end_time"]))
-
         # Normalize start and end of policy hours for a given date
         def policy_bounds(dt):
             date_only = dt.date()

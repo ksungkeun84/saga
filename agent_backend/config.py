@@ -123,3 +123,11 @@ class UserConfig(Serializable):
     media_preferences: List[str] = field(default_factory=list)
     """Media preferences of the user."""
  
+
+def get_index_of_agent(config: UserConfig, agent_name: str):
+    """
+        Get the index out of all agents that matches a given name for agent
+    """
+    # Find the index of the "writing_agent" out of all config.agents
+    agent_index = next((i for i, agent in enumerate(config.agents) if agent.name == agent_name), None)
+    return agent_index

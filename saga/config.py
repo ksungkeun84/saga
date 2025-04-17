@@ -56,7 +56,7 @@ AGENT_DEFAULT_CONFIG = {
 }
 
 ### TOKEN SETTINGS ###
-Q_MAX = 10
+Q_MAX = 50
 
 ### 3 Testing agents ###
 AGENT_GEORGE_WORKDIR = ROOT_DIR+"/user/george@mail.com:dummy_agent"

@@ -7,6 +7,7 @@ import os
 from datetime import datetime
 
 from agent_backend.tools.calendar import LocalCalendarTool
+from agent_backend.config import get_index_of_agent
 
 from saga.agent import Agent, get_agent_material
 from saga.config import ROOT_DIR
@@ -48,37 +49,39 @@ class MeetingScheduleTest:
                         e["time_from"] < event["time_to"] and e["time_to"] > event["time_from"]
                         for e in events_other if e != other_event
                     ):
+                        print("Conflict found with existing meeting")
                         return False  # Conflict found
 
                     # Ensure the meeting is not in the past
                     if event["time_from"] < datetime.now():
+                        print("Meeting is in the past!")
                         return False  # Meeting is in the past
 
                     # Make sure meeting is for an hour
                     meeting_duration = (event["time_to"] - event["time_from"]).total_seconds() / 3600
-                    if meeting_duration != 1:
-                        print(f"Meeting duration was {meeting_duration}, expected 1 hour")
+                    if meeting_duration != 0.5:
+                        print(f"Meeting duration was {meeting_duration}, expected 0.5 hour")
                         return False  # Meeting is not exactly one hour
 
                     return True  # Meeting is successfully scheduled
 
+        print("No matching event found in both users' calendars")
         return False  # No matching event found in both calendars
 
 
 def main(mode, config_path, other_user_config_path=None):
-    AGENT_FOCUS = 0
     config = UserConfig.load(config_path, drop_extra_fields=True)
 
     # Find the index of the "calendar_agent" out of all config.agents
-    calendar_agent_index = next((i for i, agent in enumerate(config.agents) if agent.name == "calendar_agent"), None)
-    if calendar_agent_index is None:
+    agent_index = get_index_of_agent(config, "calendar_agent")
+    if agent_index is None:
         raise ValueError("No agent with name 'calendar_agent' found in the configuration.")
 
     # Initialize local agent
-    local_agent = get_agent(config, config.agents[calendar_agent_index])
+    local_agent = get_agent(config, config.agents[agent_index])
 
     # Focus on first agent - infer credentials endpoint
-    credentials_endpoint = os.path.join(ROOT_DIR, f"user/{config.email}:{config.agents[AGENT_FOCUS].name}/")
+    credentials_endpoint = os.path.join(ROOT_DIR, f"user/{config.email}:{config.agents[agent_index].name}/")
     # Read agent material
     material = get_agent_material(credentials_endpoint)
     agent = Agent(workdir=credentials_endpoint,
@@ -90,14 +93,17 @@ def main(mode, config_path, other_user_config_path=None):
     else:
         # Get endpoint for other agent
         other_user_config = UserConfig.load(other_user_config_path, drop_extra_fields=True)
-        other_agent_credentials_endpoint = f"{other_user_config.email}:{other_user_config.agents[AGENT_FOCUS].name}"
+        other_user_agent_index = get_index_of_agent(other_user_config, "calendar_agent")
+        other_agent_credentials_endpoint = f"{other_user_config.email}:{other_user_config.agents[other_user_agent_index].name}"
         print(other_agent_credentials_endpoint)
         # agent.connect(other_agent_credentials_endpoint, "Please simply repeat '<TASK_FINISHED>'")
-        task = f"Let's find some time to discuss our NDSS submission. Are you available for an hour next week?"
+        task = f"Let's find some time to discuss our NDSS submission. Are you available on Monday for a 30-minute meeting? " \
+        "After we have found a common time, please schedule the meeting and send me an invite."
+        # "After we have found a common time, please schedule the meeting and send me an invite (ask me for my email if you don't have it)."
         agent.connect(other_agent_credentials_endpoint, task)
 
         # Create test object
-        test = MeetingScheduleTest(config, task)
+        test = MeetingScheduleTest(config)
         # Make sure what we wanted happened
         succeeded = test.success(other_user_config.name, other_user_config.email)
         print("Success:", succeeded)

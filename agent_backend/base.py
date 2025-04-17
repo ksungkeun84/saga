@@ -12,11 +12,13 @@ from saga.config import ROOT_DIR
 
 from agent_backend.tools.email import LocalEmailClientTool
 from agent_backend.tools.calendar import LocalCalendarTool
+from agent_backend.tools.documents import LocalDocumentsTool
 from datetime import datetime
 import importlib.resources
 
 
 VERBOSITY_LEVEL = 2
+# VERBOSITY_LEVEL = 2
 
 
 class AgentWrapper:
@@ -183,20 +185,12 @@ class AgentWrapper:
             """
             return self.email_client.search_by_query(query=query, where="sent")
 
-        @tool
-        def get_my_email() -> str:
-            """
-            Get the email ID of the current user (self).
-            """
-            return self.email_client.user_email
-
         tools_available = [
             check_inbox,
             check_outbox,
             send_email,
             # search_inbox,
             # search_outbox,
-            get_my_email
         ]
 
         return tools_available
@@ -218,17 +212,17 @@ class AgentWrapper:
             return self.calendar_client.get_upcoming_events(limit=limit)
 
         @tool
-        def add_calendar_event(time_from: str, time_to: str, event: str, details: str, participants: List[str] = []) -> bool:
+        def add_calendar_event(time_from: str, time_to: str, event: str, details: str, participants: List[str]) -> bool:
             """
             This is a tool that adds an event to the user's calendar.
             Returns True if the event was added successfully, False otherwise.
 
             Args:
-                time_from: The start time of the event. Should be in ISO format.
-                time_to: The end time of the event. Should be in ISO format.
+                time_from: The start time of the event. Should be in ISO 8601 (naive) format.
+                time_to: The end time of the event. Should be in ISO 8601 (naive) format.
                 event: The name of the event.
-                participants: List of email addresses of other participants.
                 details: Any details about the meeting. Can have reference to email with email subject, if linked to an email.
+                participants: List of email addresses of other participants.
             """
             return self.calendar_client.add_calendar_event(time_from=time_from,
                                                   time_to=time_to,
@@ -243,8 +237,8 @@ class AgentWrapper:
             Returns a list of dictionaries containing time slots where the user is available.
 
             Args:
-                time_from: The start time to check from. Should be in ISO format
-                time_to: The end time to check until. Should be in ISO format.
+                time_from: The start time to check from. Should be in ISO 8601 (naive) format
+                time_to: The end time to check until. Should be in ISO 8601 (naive) format.
             """
             return self.calendar_client.get_availability(time_from, time_to)
 
@@ -256,34 +250,71 @@ class AgentWrapper:
             """
             return self.calendar_client.get_preference()
 
-        @tool
-        def get_my_email() -> str:
-            """
-            Get the email ID of the current user (self).
-            """
-            return self.calendar_client.user_email
-
-
         tools_available = [
             get_upcoming_events,
             add_calendar_event,
             get_availability,
             get_general_preferences,
-            get_my_email
         ]
+        return tools_available
+
+    def _documents_tools(self):
+        # Define relevant tools for documents use
+        self.documents_client = LocalDocumentsTool(user_email=self.user_config.email)
+
+        @tool
+        def create_document(title: str, content: str) -> bool:
+            """
+            This is a tool that creates a document with the given title and content.
+            Returns True if the document was created successfully, False otherwise.
+
+            Args:
+                title: The title of the document.
+                content: The content of the document.
+            """
+            return self.documents_client.create_document(filename=title, content=content)
+    
+        @tool
+        def search_blogposts(query: str) -> List[dict]:
+            """
+            This is a tool that searches for blogposts that match the query (normal keyword search, not semantic).
+            This function is not perfect and may miss out on some results, so try not to be too specific. Searching for a blank string returns all blogposts.
+            Returns a list of dictionaries containing the blogpost details, sorted by time.
+
+            Args:
+                query: The query to search for.
+            """
+            return self.documents_client.search_by_query(query=query)
+
+        tools_available = [
+            create_document,
+            search_blogposts
+        ]
+
         return tools_available
 
     def _self_tools(self):
 
         @tool
-        def my_email():
+        def my_name() -> str:
             """
-            This is a tool that returns my name and email ID as tuple
-
+            This is a tool that returns my name
             """
-            return self.user_config.name, self.user_config.email
+            return self.user_config.name
+    
+        @tool
+        def my_email() -> str:
+            """
+            This is a tool that returns my email ID
+            """
+            return self.user_config.email
         
-        return [my_email]
+        tools_available = [
+            my_name,
+            my_email
+        ]
+
+        return tools_available
 
     def _create_local_agent_object(self, **kwargs) -> MultiStepAgent:
         raise NotImplementedError("Child class should implement _create_local_agent_object()")
@@ -334,12 +365,6 @@ class AgentWrapper:
         # Replace "The task is completed." with self.task_finished_token
         if response == "The task is completed.":
             response = self.task_finished_token
-        
-        # print("\n"*3)
-        # for step in agent_instance.memory.steps:
-        #     print(step)
-        #     print()
-        # print("\n"*3)
 
         return agent_instance, response
 

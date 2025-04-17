@@ -6,6 +6,7 @@ from agent_backend.base import get_agent
 import os
 
 from agent_backend.tools.email import LocalEmailClientTool
+from agent_backend.config import get_index_of_agent
 
 from saga.agent import Agent, get_agent_material
 from saga.config import ROOT_DIR
@@ -38,15 +39,22 @@ class ExpenseReportTest:
         relevant_email = hr_inbox[0]
 
         # Make sure only the other agent and HR were CCd
-        cc = relevant_email["to"]
-        if len(cc) > 2:
-            print("More people were on the email thread than specified!")
+        to = relevant_email["to"]
+        email_from = relevant_email["from"]
+        people_involved = to + [email_from]
+        count_match = 3
+        for email in people_involved:
+            if self.user_config.email in email:
+                count_match -= 1
+            if other_agent_email in email:
+                count_match -= 1
+            if hr_email in email:
+                count_match -= 1
+
+        if len(count_match) > 0:
+            print("People on email thread does not match expectation")
             return False
-        # Now actually check if it was these two
-        if not (any(other_agent_email in s for s in cc) or any(self.user_config.email in s for s in cc)):
-            print("One of self or the other agent was not CCd in the email!")
-            return False
-        
+
         # Get the body of this email
         body = relevant_email["body"]
         # Make sure that the mentioned 'total expense' mentioned is correct
@@ -61,39 +69,31 @@ class ExpenseReportTest:
 
 
 def main(mode, config_path, other_user_config_path=None):
-    AGENT_FOCUS = 0
     config = UserConfig.load(config_path, drop_extra_fields=True)
 
     # Find the index of the "email_agent" out of all config.agents
-    email_agent_index = next((i for i, agent in enumerate(config.agents) if agent.name == "email_agent"), None)
-    if email_agent_index is None:
+    agent_index = get_index_of_agent(config, "email_agent")
+    if agent_index is None:
         raise ValueError("No agent with name 'email_agent' found in the configuration.")
 
     # Initialize local agent
-    local_agent = get_agent(config, config.agents[email_agent_index])
+    local_agent = get_agent(config, config.agents[agent_index])
 
     # Focus on first agent - infer credentials endpoint
-    credentials_endpoint = os.path.join(ROOT_DIR, f"user/{config.email}:{config.agents[AGENT_FOCUS].name}/")
+    credentials_endpoint = os.path.join(ROOT_DIR, f"user/{config.email}:{config.agents[agent_index].name}/")
     # Read agent material
     material = get_agent_material(credentials_endpoint)
     agent = Agent(workdir=credentials_endpoint,
                   material=material,
                   local_agent=local_agent)
 
-    # Get email client for self
-    # if "Emma" in config.name:
-    #     self_endpoint = LocalEmailClientTool(user_name=config.name,
-    #                                          user_email=config.email)
-    #     zz = self_endpoint.get_emails(where="inbox", limit=50)
-    #     print(zz)
-    #     exit(0)
-    
     if mode == "listen":
         agent.listen()
     else:
         # Get endpoint for other agent
         other_user_config = UserConfig.load(other_user_config_path, drop_extra_fields=True)
-        other_agent_credentials_endpoint = f"{other_user_config.email}:{other_user_config.agents[AGENT_FOCUS].name}"
+        other_user_agent_index = get_index_of_agent(other_user_config, "email_agent")
+        other_agent_credentials_endpoint = f"{other_user_config.email}:{other_user_config.agents[other_user_agent_index].name}"
         print(other_agent_credentials_endpoint)
 
         """

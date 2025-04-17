@@ -9,6 +9,7 @@ from pymongo import MongoClient
 
 from agent_backend.tools.calendar import LocalCalendarTool
 from agent_backend.tools.email import LocalEmailClientTool
+from agent_backend.tools.documents import LocalDocumentsTool
 from saga.config import ROOT_DIR, MONGO_URI_FOR_TOOLS
 
 
@@ -26,7 +27,7 @@ def main(user_configs_path):
     # Drop all databases
     dbs = mongo_client.list_database_names()
     for db in dbs:
-        if db not in ["admin", "local"]:
+        if db not in ["admin", "local", "saga", "config"]:
             mongo_client.drop_database(db)
     print("Dropped all databases in tools mongo!")
 
@@ -49,6 +50,8 @@ def main(user_configs_path):
                 tool_obj = LocalEmailClientTool(user_name=name, user_email=email)
             elif tool == "calendar":
                 tool_obj = LocalCalendarTool(user_name=name, user_email=email)
+            elif tool == "documents":
+                tool_obj = LocalDocumentsTool(user_email=email)
             else:
                 print(f"Tool {tool} not implemented yet. Skipping")
                 continue
