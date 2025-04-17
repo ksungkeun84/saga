@@ -802,8 +802,7 @@ class Agent:
                     else:
                         logger.log("ACCESS", f"Valid token found. Will start conversation.")
                         # If a valid token was found, the expected response is a message.
-                        if response:
-                            response_dict = json.loads(response.decode('utf-8'))
+                        if response_dict:
                             if response_dict["token"] is not None:
                                 # Stop the stopwatch:
                                 self.monitor.stop("agent:communication_proto_init")
