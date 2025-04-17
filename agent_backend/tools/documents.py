@@ -27,7 +27,7 @@ class LocalDocumentsTool(BaseTool):
         
         # Get 'limit' most recent documents.
         if query == "":
-            documents = collection.find().sort("time:", -1)
+            documents = collection.find()
         else:
             # Search for documents where any field matches the query
             documents = collection.find({
@@ -37,6 +37,7 @@ class LocalDocumentsTool(BaseTool):
                     {"content": {"$regex": query, "$options": "i"}},
                 ]
             })
+        documents = documents.sort("time", -1)  # Sort by time in descending order
         
         # If limit is None, get all documents.
         if limit is not None:

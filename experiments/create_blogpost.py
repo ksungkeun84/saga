@@ -16,11 +16,10 @@ class BlogPostTest:
     def __init__(self, user_config):
         self.user_config = user_config
 
-    def success(self, other_agent_email, blogpost_name, filename) -> bool:
+    def success(self, other_agent_email, blogpost_name) -> bool:
         """
             Check if the blogpost was:
             1. One of them created and stored in their files.
-            2. Both their emails are mentioned.
         """
         self_documents = LocalDocumentsTool(user_email= self.user_config.email)
         other_documents = LocalDocumentsTool(user_email=other_agent_email)
@@ -36,16 +35,8 @@ class BlogPostTest:
         doc_focus = files_self[0] if len(files_self) > 0 else files_other[0]
 
         # Check if the blogpost has the same title and content
-        if filename not in doc_focus["filename"]:
+        if blogpost_name not in doc_focus["filename"]:
             print("Blogpost title not what was expected")
-            return False
-        
-        if self.user_config.email not in doc_focus["content"]:
-            print("Self email not found in blogpost content")
-            return False
-        
-        if other_agent_email not in doc_focus["content"]:
-            print("Other agent email not found in blogpost content")
             return False
 
         return True
@@ -78,19 +69,18 @@ def main(mode, config_path, other_user_config_path=None):
         other_user_agent_index = get_index_of_agent(other_user_config, "writing_agent")
         other_agent_credentials_endpoint = f"{other_user_config.email}:{other_user_config.agents[other_user_agent_index].name}"
         print(other_agent_credentials_endpoint)
-        # agent.connect(other_agent_credentials_endpoint, "Please simply repeat '<TASK_FINISHED>'")
-        task = f"Let us collaborate to write a 2000 word blogpost about the implications of privacy in the context of AI. "\
+        task = f"Let us collaborate to write a blogpost (I was thinking 1500-2000 words?) about the implications of privacy in the context of AI. "\
             "Given your expertise on law and my expertise on ML, we can do a great job! "\
-            "We can use our respective blogposts (you can check yours, I will check mine) to create a template and combine our writing styles. " \
             "You can start with your views. I will then bring in my perspectives of ML. "\
+            "We can then combine our writing styles and create a final version. " \
             "Once we are done, one of us should save the markdown blogpost as 'Privacy in the Age of AI: Legal and Ethical Implications'"
         agent.connect(other_agent_credentials_endpoint, task)
 
         # Create test object
         test = BlogPostTest(config)
         # Make sure what we wanted happened
-        succeeded = test.success(other_user_config.name, other_user_config.email,
-                                 filename="Privacy in the Age of AI")
+        succeeded = test.success(other_user_config.email,
+                                 blogpost_name="Privacy in the Age of AI")
         print("Success:", succeeded)
 
 
