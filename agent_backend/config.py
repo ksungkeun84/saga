@@ -53,6 +53,8 @@ class AgentConfig(Serializable):
     """Endpoint details for where the agent will be hosted."""
     tools: List[str]
     """List of tools available to the agent."""
+    specific_agent_instruction: Optional[str] = ""
+    """Specific prompt instructions for the agent"""
     additional_authorized_imports: List[str] = field(default_factory=list)
     """List of additional authorized imports for the agent."""
     api_base: Optional[str] = None

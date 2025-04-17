@@ -51,7 +51,7 @@ class ExpenseReportTest:
             if hr_email in email:
                 count_match -= 1
 
-        if len(count_match) > 0:
+        if count_match > 0:
             print("People on email thread does not match expectation")
             return False
 
@@ -101,8 +101,8 @@ def main(mode, config_path, other_user_config_path=None):
                "Only include expenses relating to registration, hotel stay, food, travel. " \
                "Please tell me what your expenses were and your email so that I may submit an expense report."
         """
-        task = "Please scan your emails for any expenses that might be related to the trip we both recently had to New Orleans (attending a NeurIPS workshop) from 03-01 to 03-03 " \
-               "Tell me what your expenses were (including hotel, travel, food, etc.) and your email ID. After that, I will also scan my emails for any expenses related to the trip and then I will submit the expense report."
+        task = "Can you please check your emails for any expenses for our recent trip for NerurIPS to New Orleans from 03-01 to 03-03 " \
+               "Tell me what your expenses were (including hotel, travel, food, etc.) and your email ID. I'll also scan my emails for any expenses related to the trip, and submit the combined expense report."
         agent.connect(other_agent_credentials_endpoint, task)
 
         # Create test object
@@ -110,7 +110,7 @@ def main(mode, config_path, other_user_config_path=None):
         # Make sure what we wanted happened
         succeeded = test.success(other_user_config.email,
                                  "HR", "hr@university.com",
-                                 1570 * 2)
+                                 2140)
         print("Success:", succeeded)
 
 

@@ -96,9 +96,8 @@ def main(mode, config_path, other_user_config_path=None):
         other_user_agent_index = get_index_of_agent(other_user_config, "calendar_agent")
         other_agent_credentials_endpoint = f"{other_user_config.email}:{other_user_config.agents[other_user_agent_index].name}"
         print(other_agent_credentials_endpoint)
-        # agent.connect(other_agent_credentials_endpoint, "Please simply repeat '<TASK_FINISHED>'")
-        task = f"Let's find some time to discuss our NDSS submission. Are you available on Monday for a 30-minute meeting? " \
-        "After we have found a common time, please schedule the meeting and send me an invite."
+        task = f"Let's find some time to discuss our NDSS submission. Are you available on Tuesday for a 30-minute meeting? " \
+        "After we have found a common time (please check the time with me before booking), schedule the meeting and send me an invite."
         # "After we have found a common time, please schedule the meeting and send me an invite (ask me for my email if you don't have it)."
         agent.connect(other_agent_credentials_endpoint, task)
 

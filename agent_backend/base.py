@@ -1,8 +1,7 @@
 from smolagents import CodeAgent, HfApiModel, TransformersModel, OpenAIServerModel, MultiStepAgent, ToolCallingAgent
 from agent_backend.config import AgentConfig, UserConfig
 import yaml
-from typing import List
-from typing import Tuple
+from typing import List, Tuple
 from smolagents import tool
 from smolagents import populate_template
 from smolagents.memory import TaskStep
@@ -65,12 +64,20 @@ class AgentWrapper:
                 hf_api_url="https://api-inference.huggingface.co/models/"
             )
         elif self.config.model_type == "OpenAIServerModel":
-            model = OpenAIServerModel(
-                model_id=self.config.model,
-                api_base=self.config.api_base,
-                api_key=self.config.api_key,
-                temperature=0.0
+            if "o3-mini" in self.config.model:
+                # Reasoning models currently do not support temperature control
+                model = OpenAIServerModel(
+                    model_id=self.config.model,
+                    api_base=self.config.api_base,
+                    api_key=self.config.api_key,
             )
+            else:
+                model = OpenAIServerModel(
+                    model_id=self.config.model,
+                    api_base=self.config.api_base,
+                    api_key=self.config.api_key,
+                    temperature=0.0,
+                )
         else:
             raise ValueError(f"Model type {self.config.model_type} not supported.")
         
@@ -231,16 +238,20 @@ class AgentWrapper:
                                                   participants=participants)
 
         @tool
-        def get_availability(time_from: str, time_to: str) -> List[dict]:
+        def get_free_time_slots(time_from: str, time_to: str) -> Tuple[bool, List[dict]]:
             """
             This is a tool that retrieves the upcoming events from the user's calendar that correspond to a certain time-range.
-            Returns a list of dictionaries containing time slots where the user is available.
+            Returns a tuple that indicates whether the user is available for the given time-range, and a list of dictionaries containing the times when the user is free.
 
             Args:
                 time_from: The start time to check from. Should be in ISO 8601 (naive) format
                 time_to: The end time to check until. Should be in ISO 8601 (naive) format.
             """
-            return self.calendar_client.get_availability(time_from, time_to)
+            available_slots = self.calendar_client.get_availability(time_from, time_to)
+            if len(available_slots) > 0:
+                # If there are available slots, return True and the list of available slots
+                return True, available_slots
+            return False, []
 
         @tool
         def get_general_preferences() -> str:
@@ -253,7 +264,7 @@ class AgentWrapper:
         tools_available = [
             get_upcoming_events,
             add_calendar_event,
-            get_availability,
+            get_free_time_slots,
             get_general_preferences,
         ]
         return tools_available
@@ -263,7 +274,7 @@ class AgentWrapper:
         self.documents_client = LocalDocumentsTool(user_email=self.user_config.email)
 
         @tool
-        def create_document(title: str, content: str) -> bool:
+        def create_document(title: str, content: str, filetype: str = "md") -> bool:
             """
             This is a tool that creates a document with the given title and content.
             Returns True if the document was created successfully, False otherwise.
@@ -271,8 +282,9 @@ class AgentWrapper:
             Args:
                 title: The title of the document.
                 content: The content of the document.
+                filetype: File extension, defaults to "md"
             """
-            return self.documents_client.create_document(filename=title, content=content)
+            return self.documents_client.create_document(filename=f"{title}.{filetype}", content=content)
     
         @tool
         def search_blogposts(query: str) -> List[dict]:
@@ -326,10 +338,16 @@ class AgentWrapper:
         else:
             preamble = self.custom_prompt["receiving_agent"]
         
-        # Fill in the template text
-        # TODO: Find a better way around this mess
+        # Add preamble
+        template_text = self.custom_prompt["system_prompt"].replace("[[[preamble]]]", preamble)
+        # Add task finished token
+        template_text = template_text.replace("[[[task_finished_token]]]", self.task_finished_token)
+        # Fill in today's date
         today_date = datetime.now().strftime("%A, %B %d, %Y")
-        template_text = self.custom_prompt["system_prompt"].replace("[[[preamble]]]", preamble).replace("[[[task_finished_token]]]", self.task_finished_token).replace("[[[today_date]]]", today_date)
+        template_text = template_text.replace("[[[today_date]]]", today_date)
+        # Also replace to provide custom agent instructions
+        template_text = template_text.replace("[[[specific_agent_instruction]]]", self.config.specific_agent_instruction)
+
         # Use this template text
         if task is not None:
             template_text = template_text.replace("[[[task]]]", task)

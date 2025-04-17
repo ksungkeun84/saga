@@ -127,3 +127,58 @@ bisco = Agent.fromDir("user/bob@hisdomain.com:bisco/")
 # Attempts to start a new conversation with Alice's astro agent.
 bisco.connect("alice@herdomain.com:astro")
 ```
+
+## Experiments
+
+### Setup 
+
+To get started, register the user using their configuration. We provide template user configs under `user_configs`.
+To register a user, run
+
+```bash
+cd saga/user
+python user.py --register --uconfig ../../user_configs/emma.yaml
+```
+
+To register the agent(s) corresponding to this user, run
+
+```bash
+cd saga/user
+python user.py --register-agents --uconfig ../../user_configs/emma.yaml
+```
+
+You can also register the user and agents in one go by providing both `--register` and `--register-agents` flags.
+
+### Seed Data
+
+Next, you can populate the "data" used by tools for each of the users by running:
+
+```bash
+cd experiments/
+python seed_tool_data.py
+```
+
+This will use data from `experiments/data` to seed tool-related data for each user
+
+### Running tasks
+
+The three tasks mentioned in the paper map to the following files under `experiments/`
+- `schedule_meeting.py` : Scheduling agents coordinating to find a common time for a meeting and sending a calendar invite.
+- `expense_report.py` : Email-reading agents coordinating to collect their expenses for a recent business trip, and one of them submits an expense report to HR.
+- `create_blogpost.py` : Blogpost-writing agents use knowledge from prior blogposts of their users to collaborate and write a blogpost on some shared topic.
+
+To run a task, first start the receiving agent on its endpoint:
+
+```bash
+cd experiments/
+python <task.py> listen ../user_configs/config1.yaml
+```
+
+Then, start the initiating agent on its respective endpoint
+
+```bash
+cd experiments/
+python <task.py> query ../user_configs/config2.yaml ../user_configs/config1.yaml
+```
+
+The agent corresponding to `config2.yaml` will then contact `config1.yaml` and they work towards their shared goal.
