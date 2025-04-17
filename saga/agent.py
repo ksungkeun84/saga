@@ -23,7 +23,6 @@ from saga.common.contact_policy import check_rulebook, match
 from saga.ca.CA import get_SAGA_CA
 
 DEBUG = False
-MAX_BUFFER_SIZE = 8*1024
 MAX_QUERIES = 100
 
 import saga.common.crypto as sc
