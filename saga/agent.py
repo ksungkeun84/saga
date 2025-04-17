@@ -749,20 +749,17 @@ class Agent:
                     # Stop the stopwatch
                     self.monitor.stop("agent:communication_proto_init")
 
-                    # Encode the request as JSON
-                    request_json = json.dumps(request_dict).encode('utf-8')
                     # Send JSON request
-                    conn.sendall(request_json)
+                    self.send(conn, request_dict)
 
                     # Receive response
-                    response = conn.recv(MAX_BUFFER_SIZE)
+                    response_dict = self.recv(conn)
 
                     # Restart the stopwatch:
                     self.monitor.start("agent:communication_proto_init")
                     
-                    if token is None and response:
+                    if token is None and response_dict:
                         # If no valid token was found, the expected response is a token.
-                        response_dict = json.loads(response.decode('utf-8'))
                         
                         self.monitor.start("agent:token_init")
                         # Diffie hellman calculations:
@@ -841,13 +838,11 @@ class Agent:
             logger.log("NETWORK", f"Incoming connection from {fromaddr}.")
 
             # Receive data
-            data = conn.recv(MAX_BUFFER_SIZE)
-            if data:
+            received_msg = self.recv(conn)
+            if received_msg:
                     # Start the stopwatch:
                     self.monitor.start("agent:communication_proto_recv")
                     try:
-                        # Decode and parse JSON data
-                        received_msg = json.loads(data.decode('utf-8'))
 
                         # Extract i_aid from card:
                         i_card = received_msg.get("card", None)
@@ -1020,7 +1015,7 @@ class Agent:
                             self.monitor.stop("agent:communication_proto_recv")
                             logger.log("OVERHEAD", f"agent:communication_proto_recv: {self.monitor.elapsed('agent:communication_proto_recv')}")
 
-                            conn.sendall(ser_token_response)
+                            self.send(conn, token_response)
 
                             # Start the conversation:
                             logger.log("AGENT", f"Starting conversation with {i_aid}.")
@@ -1036,7 +1031,7 @@ class Agent:
 
                                 # If the token is valid, start the conversation:
                                 logger.log("ACCESS", f"Valid token found. Will accept conversation.")
-                                conn.sendall(json.dumps({"token": i_token}).encode('utf-8'))
+                                self.send(conn, {"token": i_token})
                                 self.receive_conversation(conn, i_token, i_pac)
                                 logger.log("OVERHEAD", f"agent:communication_conv_recv: {self.monitor.elapsed('agent:communication_conv_recv')}")
                                 logger.log("OVERHEAD", f"agent:llm_backend_recv: {self.monitor.elapsed('agent:llm_backend_recv')}")
