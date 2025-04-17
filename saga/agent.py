@@ -688,6 +688,7 @@ class Agent:
         try:
             # Create and connect the socket
             with socket.create_connection((r_ip, r_port)) as sock:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 with context.wrap_socket(sock, server_hostname=r_aid) as conn:
                     logger.log("NETWORK", f"Connected to {r_ip}:{r_port} with verified certificate.")
 
