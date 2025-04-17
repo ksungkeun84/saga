@@ -405,6 +405,25 @@ class Agent:
             return None
         return token
 
+    def send(self, conn, payload):
+        data = json.dumps(payload).encode('utf-8')
+        conn.sendall(len(data).to_bytes(4, 'big') + data)
+
+    def recv(self, conn):
+        try:
+            length_bytes = conn.recv(4)
+            length = int.from_bytes(length_bytes, 'big')
+
+            buffer = b''
+            while len(buffer) < length:
+                buffer += conn.recv(length - len(buffer))
+
+            response = json.loads(buffer.decode('utf-8'))
+            return response
+        except Exception as e:
+            logger.error(f"Error receiving data: {e}")
+            return None
+
     def initiate_conversation(self, conn, token: str, r_aid: str, init_msg: str) -> bool:
         """
         Returns true if the conversation ended from the initiating side.
@@ -427,7 +446,7 @@ class Agent:
 
             # Send message:
             self.monitor.stop("agent:communication_conv_init")
-            conn.sendall(json.dumps(msg).encode('utf-8'))
+            self.send(conn, msg)
             self.monitor.start("agent:communication_conv_init")
             logger.log("AGENT", f"Sent: \'{msg['msg']}\'")
 
@@ -449,13 +468,12 @@ class Agent:
                 return True
             # Receive response:
             self.monitor.stop("agent:communication_conv_init")
-            response = conn.recv(MAX_BUFFER_SIZE)
+            response = self.recv(conn)
             self.monitor.start("agent:communication_conv_init")
             if not response:
-                logger.warn("Received b'' indicating that the connection might have been closed from the other side. Returning...")
+                logger.warn("Failed to parse incoming socket message; connection may have closed abruptly during reception.")
                 self.monitor.stop("agent:communication_conv_init")
                 return False
-            response = json.loads(response.decode('utf-8'))
 
             # Process response:
             received_message = str(response.get("msg", self.local_agent.task_finished_token))
@@ -494,15 +512,13 @@ class Agent:
             
             # Receive message from the initiating side:
             self.monitor.stop("agent:communication_conv_recv")
-            message = conn.recv(MAX_BUFFER_SIZE)
+            message_dict = self.recv(conn)
             self.monitor.start("agent:communication_conv_recv")
-            if not message:
-                logger.warn("Received b'' indicating that the connection might have been closed from the other side. Returning...")
+            if not message_dict:
+                logger.warn("Failed to parse incoming socket message; connection may have closed abruptly during reception.")
                 self.monitor.stop("agent:communication_conv_recv")
                 return False
             
-            # If the message is not empty, process it:
-            message_dict = json.loads(message.decode('utf-8'))
 
             # Extract token from the message:
             token = message_dict.get("token", None)
@@ -553,7 +569,7 @@ class Agent:
             }
             # Send response:
             self.monitor.stop("agent:communication_conv_recv")
-            conn.sendall(json.dumps(response_dict).encode('utf-8'))
+            self.send(conn, response_dict)
             self.monitor.start("agent:communication_conv_recv")
             logger.log("AGENT", f"Sent: \'{response_dict['msg']}\'")
 
