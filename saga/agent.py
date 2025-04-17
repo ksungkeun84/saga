@@ -478,7 +478,9 @@ class Agent:
                 self.monitor.stop("agent:communication_conv_init")
                 return True
             self.monitor.stop("agent:communication_conv_init")
+            self.monitor.start("agent:llm_backend_init")
             agent_instance, text = self.local_agent.run(received_message, initiating_agent=True, agent_instance=agent_instance)
+            self.monitor.stop("agent:llm_backend_init")
             self.monitor.start("agent:communication_conv_init")
             i += 1 # increment queries counter
 
@@ -538,7 +540,9 @@ class Agent:
 
             # Get agent response:
             self.monitor.stop("agent:communication_conv_recv")
+            self.monitor.start("agent:llm_backend_recv")
             agent_instance, response = self.local_agent.run(query=received_message, initiating_agent=False, agent_instance=agent_instance)
+            self.monitor.stop("agent:llm_backend_recv")
             self.monitor.start("agent:communication_conv_recv")
             i+=1 # increase query counter
             
@@ -780,6 +784,7 @@ class Agent:
                         # Start the conversation:
                         self.initiate_conversation(conn, new_enc_token_str, r_aid, message)
                         logger.log("OVERHEAD", f"agent:communication_conv_init: {self.monitor.elapsed('agent:communication_conv_init')}")
+                        logger.log("OVERHEAD", f"agent:llm_backend_init: {self.monitor.elapsed('agent:llm_backend_init')}")
                     else:
                         logger.log("ACCESS", f"Valid token found. Will start conversation.")
                         # If a valid token was found, the expected response is a message.
@@ -791,6 +796,7 @@ class Agent:
                                 logger.log("OVERHEAD", f"agent:communication_proto_init: {self.monitor.elapsed('agent:communication_proto_init')}")
                                 self.initiate_conversation(conn, token, r_aid, message)
                                 logger.log("OVERHEAD", f"agent:communication_conv_init: {self.monitor.elapsed('agent:communication_conv_init')}")
+                                logger.log("OVERHEAD", f"agent:llm_backend_init: {self.monitor.elapsed('agent:llm_backend_init')}")
                             else:
                                 logger.error("Token rejected from receiving side.")
                                 
@@ -1003,6 +1009,7 @@ class Agent:
                             logger.log("AGENT", f"Starting conversation with {i_aid}.")
                             self.receive_conversation(conn, enc_token_str, i_pac)
                             logger.log("OVERHEAD", f"agent:communication_conv_recv: {self.monitor.elapsed('agent:communication_conv_recv')}")
+                            logger.log("OVERHEAD", f"agent:llm_backend_recv: {self.monitor.elapsed('agent:llm_backend_recv')}")
                         else:
                             # Check the token and see if it is in the active tokens:
                             if self.token_is_valid(i_token, i_pac):
@@ -1015,6 +1022,7 @@ class Agent:
                                 conn.sendall(json.dumps({"token": i_token}).encode('utf-8'))
                                 self.receive_conversation(conn, i_token, i_pac)
                                 logger.log("OVERHEAD", f"agent:communication_conv_recv: {self.monitor.elapsed('agent:communication_conv_recv')}")
+                                logger.log("OVERHEAD", f"agent:llm_backend_recv: {self.monitor.elapsed('agent:llm_backend_recv')}")
                             else:
                                 logger.error("Token is invalid. Ending connection.")
 
