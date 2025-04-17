@@ -32,7 +32,10 @@ class LocalCalendarTool(BaseTool):
         db = self.client.get_database(self.tool_name)
         collection_self = db.get_collection(self.user_email)
 
-        for event in data: 
+        for event in data:
+            event["time_from"] = datetime.fromisoformat(event["time_from"])
+            event["time_to"] = datetime.fromisoformat(event["time_to"])
+
             # Insert into self sent collection
             collection_self.insert_one(event)
 
@@ -74,12 +77,17 @@ class LocalCalendarTool(BaseTool):
         db = self.client.get_database(self.tool_name)
         collection = db.get_collection(self.user_email)
 
+        current = datetime.fromisoformat(time_from)
+        end_time_dt = datetime.fromisoformat(time_to)
+
         # We want all calendar events that are within the specified time range
         events = collection.find({
-            "time_from": {"$lte": datetime.fromisoformat(time_from)},
-            "time_to": {"$gte": datetime.fromisoformat(time_to)}
+            "$or": [
+                {"time_from": {"$gte": current, "$lte": end_time_dt}},
+                {"time_to": {"$gte": current, "$lte": end_time_dt}},
+                {"time_from": {"$lte": current}, "time_to": {"$gte": end_time_dt}}
+            ]
         }).sort("time_from", 1)
-        events = list(events)
 
         # Normalize start and end of policy hours for a given date
         def policy_bounds(dt):
@@ -107,8 +115,6 @@ class LocalCalendarTool(BaseTool):
             return blocks
 
         # Start from the query's starting datetime.
-        current = datetime.fromisoformat(time_from)
-        end_time_dt = datetime.fromisoformat(time_to)
         free_times = []
 
         # Iterate through all events in order.

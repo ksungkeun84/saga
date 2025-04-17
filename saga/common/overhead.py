@@ -2,22 +2,17 @@ import time
 
 class Monitor:
     """
-    Singleton class to monitor and time different overheads using start/stop mechanics.
+    Class to monitor and time different overheads using start/stop mechanics.
     """
-    _instance = None
-    f_time = time.process_time
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._runs = {}  # run_id -> {"start": time, "elapsed": float}
-        return cls._instance
+    def __init__(self, f_time = time.process_time):
+        self.f_time = f_time
+        self._runs = {}
 
     def start(self, run_id):
         """
         Starts (or restarts) the stopwatch for a given run ID.
         """
-        now = Monitor.f_time()
+        now = self.f_time()
         if run_id not in self._runs:
             self._runs[run_id] = {"start": now, "elapsed": 0.0}
         else:
@@ -27,7 +22,7 @@ class Monitor:
         """
         Stops the stopwatch and accumulates the elapsed time.
         """
-        now = Monitor.f_time()
+        now = self.f_time()
         run = self._runs.get(run_id, None)
         if run is None:
             # Do nothing

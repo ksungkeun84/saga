@@ -1,8 +1,7 @@
 from smolagents import CodeAgent, HfApiModel, TransformersModel, OpenAIServerModel, MultiStepAgent, ToolCallingAgent
 from agent_backend.config import AgentConfig, UserConfig
 import yaml
-from typing import List
-from typing import Tuple
+from typing import List, Tuple
 from smolagents import tool
 from smolagents import populate_template
 from smolagents.memory import TaskStep
@@ -234,13 +233,14 @@ class AgentWrapper:
         def get_availability(time_from: str, time_to: str) -> List[dict]:
             """
             This is a tool that retrieves the upcoming events from the user's calendar that correspond to a certain time-range.
-            Returns a list of dictionaries containing time slots where the user is available.
+            Returns a list of dictionaries containing time slots where the user is available, empty list if no slots are available.
 
             Args:
                 time_from: The start time to check from. Should be in ISO 8601 (naive) format
                 time_to: The end time to check until. Should be in ISO 8601 (naive) format.
             """
-            return self.calendar_client.get_availability(time_from, time_to)
+            available_slots = self.calendar_client.get_availability(time_from, time_to)
+            return available_slots
 
         @tool
         def get_general_preferences() -> str:
