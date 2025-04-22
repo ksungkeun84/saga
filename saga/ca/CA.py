@@ -4,6 +4,7 @@ import saga.config
 import requests
 from saga.common.logger import Logger as logger
 
+
 def download_file(url, save_path):
     response = requests.get(url, stream=True)
     if response.status_code == 200:
@@ -18,8 +19,16 @@ def download_file(url, save_path):
 class CA:
     """
     A class to represent a Certificate Authority (CA).
+    This class is responsible for managing the CA's private key, public key, and certificate.
+    It can sign public keys to generate X.509 certificates and verify existing certificates.
+    It downloads the necessary files from a specified endpoint and initializes the CA with them.
     """
     def __init__(self, workdir, config):
+        """
+        Initializes the CA with the given working directory and configuration.
+        :param workdir: The directory where the CA's keys and certificate will be stored.
+        :param config: A dictionary containing configuration parameters for the CA.
+        """
         self.orgname = config.get("ORG_NAME", "CA")
         self.workdir = workdir
         if self.workdir[-1] != '/':
@@ -46,6 +55,9 @@ class CA:
     def sign(self, public_key, config):
         """
         Generates a signed X.509 certificate.
+
+        :param public_key: The public key to be signed.
+        :param config: A dictionary containing certificate information (e.g., COUNTRY_NAME).
         """
         return sc.generate_x509_certificate(
             config, 
@@ -57,6 +69,8 @@ class CA:
     def verify(self, certificate):
         """
         Verifies a X.509 certificate.
+
+        :param certificate: The X.509 certificate to verify.
         """
         sc.verify_x509_certificate(
             certificate=certificate, 
@@ -64,6 +78,9 @@ class CA:
         )
 
 def get_SAGA_CA():
+    """
+    Returns an instance of the CA class initialized with the SAGA configuration.
+    """
     return CA(
         workdir=saga.config.CA_WORKDIR,
         config=saga.config.CA_CONFIG

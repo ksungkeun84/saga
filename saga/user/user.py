@@ -1,5 +1,3 @@
-import socket
-import ssl
 import requests
 import base64
 import saga.config
@@ -15,6 +13,8 @@ def get_provider_cert(email):
     """
     This is a 'smarter' way to get the provider's certificate. This function uses the requests library
     to get the certificate of the server.
+
+    :param email: The email of the user.
     """
     provider_url = saga.config.PROVIDER_URL
     response = requests.get(provider_url+"/certificate", verify=saga.config.CA_CERT_PATH, cert=(
@@ -38,7 +38,15 @@ state['agents'] = {}
 
 monitor = Monitor()
 
-def register(email=None, password=None):
+def register(email: str=None, password: str=None):
+    """
+    Register a new user with the provider. This function generates the user's cryptographic material,
+    including a signing key pair and a user certificate, and sends them to the provider for registration.
+    If the user already exists, the registration will fail.
+
+    :param email: The email of the user. If None, the user will be prompted to enter it.
+    :param password: The password of the user. If None, the user will be prompted to enter it.
+    """
 
     email = input("Enter email: ") if email is None else email
     password = input("Enter password: ") if password is None else password
@@ -99,7 +107,15 @@ def register(email=None, password=None):
         os.remove(saga.config.USER_WORKDIR+"/keys/"+email+".crt")
         os.remove(saga.config.USER_WORKDIR+"/keys/"+email+".pub")        
 
-def login(email=None, password=None):
+
+def login(email: str=None, password: str=None):
+    """
+    Login an existing user with the provider. This function retrieves the user's cryptographic material
+    from disk, sends the login request to the provider, and verifies the provider's certificate.
+
+    :param email: The email of the user. If None, the user will be prompted to enter it.
+    :param password: The password of the user. If None, the user will be prompted to enter it.
+    """
     global PROVIDER_CERT, PK_Prov
     email = input("Enter email: ") if email is None else email
     password = input("Enter password: ") if password is None else password
@@ -130,7 +146,23 @@ def login(email=None, password=None):
         logger.log("PROVIDER", f"Login failed: {response.json()}")
         return None
 
-def register_agent(name=None, device=None, IP=None, port=None, num_one_time_keys=None, contact_rulebook=None):
+def register_agent(name=None, device=None,
+                   IP=None,
+                   port=None,
+                   num_one_time_keys=None,
+                   contact_rulebook=None):
+    """
+    Register a new agent with the provider. This function generates the agent's cryptographic material,
+    including a signing key pair, a device certificate, and one-time access keys. It then sends the
+    registration request to the provider.
+
+    :param name: The name of the agent. If None, the user will be prompted to enter it.
+    :param device: The name of the device where the agent is running. If None, the user will be prompted to enter it.
+    :param IP: The IP address of the device where the agent is running. If None, the user will be prompted to enter it.
+    :param port: The port of the device where the agent is running. If None, the user will be prompted to enter it.
+    :param num_one_time_keys: The number of one-time access keys to generate. If None, the user will be prompted to enter it.
+    :param contact_rulebook: The contact rulebook for the agent. If None, the user will be prompted to enter it.
+    """
     global PROVIDER_CERT, PK_Prov
 
     name = input("Enter agent name: ") if name is None else name
@@ -303,6 +335,9 @@ def register_agent(name=None, device=None, IP=None, port=None, num_one_time_keys
     logger.log("OVERHEAD", f"user:agent_register: {monitor.elapsed('user:agent_register')}")
 
 def spawn_agent(application):
+    """
+    This function creates a directory for the agent and dumps the application material in a JSON file.
+    """
     # Create agent directory if not exists:
     agent_dir_path = f"./{application.get('aid')}"
     if not os.path.exists(agent_dir_path):
@@ -312,8 +347,6 @@ def spawn_agent(application):
     with open(agent_dir_path+"/agent.json", "w") as f:
         json.dump(application, f, indent=4)
 
-    # TODO: Start the agent process with the given material.
-    # For now, this will be done manually from the dev.
 
 if __name__ == "__main__":
 

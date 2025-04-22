@@ -2,6 +2,8 @@
 import saga
 import os
 
+# TODO: Have some offline config file with this information, read it here and make available in these variables
+
 # MondoDB connection string (for tool-related data)
 MONGO_URI_FOR_TOOLS = "mongodb://129.10.187.52:27017/saga_tools"
 

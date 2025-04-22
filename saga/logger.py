@@ -1,7 +1,18 @@
+"""
+# Logger class for printing messages with colored tags
+This module provides a Logger class that allows you to log messages with colored tags.
+It supports different log levels and colors based on the tag.
+"""
 import hashlib
 import time
 
 class Logger:
+    """
+    Logger class for printing messages with colored tags.
+    This class provides methods to log messages with a timestamp and a tag.
+    The tag is hashed to determine the color of the message.
+    It supports different log levels such as warning and error.
+    """
     COLORS = [
         "\033[91m",  # Red
         "\033[92m",  # Green
@@ -33,12 +44,14 @@ class Logger:
     
     @staticmethod
     def warn(message):
+        """ Prints a warning message to the console with a timestamp."""
         timestamp = time.strftime("%H:%M:%S")
         color = Logger.COLORS[2]
         print(f"{timestamp} {color}[WARNING] {message} {Logger.RESET}")
 
     @staticmethod
     def error(message):
+        """ Prints an error message to the console with a timestamp."""
         timestamp = time.strftime("%H:%M:%S")
         color = Logger.COLORS[0]
         print(f"{timestamp} {color}[ERROR] {message} {Logger.RESET}")

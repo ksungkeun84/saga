@@ -1,8 +1,9 @@
 """
-Common contact policy package for Thesmos
+    Common contact policy package for SAGA
 """
 import fnmatch
 from saga.common.logger import Logger as logger
+
 
 def check_aid(aid):
     """
@@ -30,9 +31,12 @@ def check_aid(aid):
 def check_rulebook(rulebook):
     """
     Checks if the contact rulebook is valid.
+    The rulebook is a list of rules, where each rule is a dictionary with the following keys:
     """
+    
     if rulebook is None:
         return False
+
     for rule in rulebook:
         # Rules are in the form of:
         # {
@@ -78,6 +82,7 @@ def check_rulebook(rulebook):
             return False
     return True
 
+
 def pattern_specificity_component(component, weight=1):
     score = 0
     i = 0
@@ -99,6 +104,7 @@ def pattern_specificity_component(component, weight=1):
         i += 1
     return score
 
+
 def aid_specificity(aid_pattern):
     """
     Returns the specificity score of a given AID pattern.
@@ -116,6 +122,7 @@ def aid_specificity(aid_pattern):
     nametag_score = pattern_specificity_component(nametag_part, weight=2)
     return uid_score + nametag_score
 
+
 def compare_aid_patterns(p1, p2):
     s1 = aid_specificity(p1)
     s2 = aid_specificity(p2)
@@ -125,6 +132,7 @@ def compare_aid_patterns(p1, p2):
         return f"'{p2}' is more specific than '{p1}'"
     else:
         return f"'{p1}' and '{p2}' are equally specific"
+
 
 def match(contact_rulebook, t_aid):
     """
