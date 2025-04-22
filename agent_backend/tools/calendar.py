@@ -1,7 +1,6 @@
 from pymongo import MongoClient
 from datetime import datetime, timedelta, time
 from typing import List
-import calendar
 
 from agent_backend.tools.base import BaseTool
 

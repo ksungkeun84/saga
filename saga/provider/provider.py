@@ -1,6 +1,4 @@
-"""
-    Provider for SAGA agents that handles user registration, authentication, and certificate management.
-"""
+"""Provider for SAGA agents that handles user registration, authentication, and certificate management."""
 import ssl
 from flask import Flask, request, jsonify
 from flask_bcrypt import Bcrypt
@@ -32,12 +30,13 @@ class Provider:
         """
         Initializes the Provider with MongoDB, JWT, and OAuth configuration.
 
-        :param workdir: Directory where the provider will store its data.
-        :param name: Name of the provider.
-        :param host: Host address for the Flask app.
-        :param port: Port for the Flask app.
-        :param mongo_uri: MongoDB URI for the provider's database.
-        :param jwt_secret: Secret key for JWT authentication.
+        Args:
+            workdir: Directory where the provider will store its data.
+            name: Name of the provider.
+            host: Host address for the Flask app.
+            port: Port for the Flask app.
+            mongo_uri: MongoDB URI for the provider's database.
+            jwt_secret: Secret key for JWT authentication.
         """
 
         self.workdir = workdir if workdir[-1] == '/' else workdir+'/'

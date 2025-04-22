@@ -1,7 +1,5 @@
 """
-# Logger class for printing messages with colored tags
-This module provides a Logger class that allows you to log messages with colored tags.
-It supports different log levels and colors based on the tag.
+    Logger class for printing messages with colored tags
 """
 import hashlib
 import time

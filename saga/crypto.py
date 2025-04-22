@@ -55,22 +55,28 @@ def generate_x25519_keypair():
 def bytesToPublicX25519Key(key_bytes):
     """
     Convert bytes to an X25519 Public key
-    :param key_bytes: The bytes representing the X25519 public key.
+
+    Args:
+        key_bytes: The bytes representing the X25519 public key.
     """
     return x25519.X25519PublicKey.from_public_bytes(key_bytes)
 
 def bytesToPrivateX25519Key(key_bytes):
     """
     Convert bytes to an X25519 Public key
-    :param key_bytes: The bytes representing the X25519 private key.
+
+    Args:
+        key_bytes: The bytes representing the X25519 private key.
     """
     return x25519.X25519PrivateKey.from_private_bytes(key_bytes)
 
 def sign_message(ed25519_private_key, message):
     """
     Sign a message using the Ed25519 private key.
-    :param ed25519_private_key: The Ed25519 private key object.
-    :param message: The message to sign.
+
+    Args:
+        ed25519_private_key: The Ed25519 private key object.
+        message: The message to sign.
     """
 
     # Sign the Message Using the Ed25519 Private Key
@@ -82,9 +88,11 @@ def sign_message(ed25519_private_key, message):
 def verify_signature(ed25519_public_key, message, signature):
     """
     Verify a signature using the Ed25519 public key.
-    :param ed25519_public_key: The Ed25519 public key object.
-    :param message: The original message that was signed.
-    :param signature: The signature to verify.
+
+    Args:
+        ed25519_public_key: The Ed25519 public key object.
+        message: The original message that was signed.
+        signature: The signature to verify.
     """
 
     # Verify the Signature Using the Ed25519 Public Key
@@ -100,7 +108,9 @@ def verify_signature(ed25519_public_key, message, signature):
 def derive_x25519_keypair(ed25519_private_key):
     """
     Derive an X25519 keypair from an Ed25519 private key.
-    :param ed25519_private_key: The Ed25519 private key object.
+
+    Args:
+        ed25519_private_key: The Ed25519 private key object.
     """
     # Convert Ed25519 Key to X25519 Key (for Diffie-Hellman Key Exchange)
     # XEdDSA allows deriving an X25519 key from an Ed25519 key.
@@ -118,9 +128,11 @@ def derive_x25519_keypair(ed25519_private_key):
 def save_ed25519_keys(name, ed25519_private_key, ed25519_public_key):
     """
     Save the Ed25519 private and public keys to files.
-    :param name: The base name for the key files (without extension).
-    :param ed25519_private_key: The Ed25519 private key object.
-    :param ed25519_public_key: The Ed25519 public key object.
+
+    Args:
+        name: The base name for the key files (without extension).
+        ed25519_private_key: The Ed25519 private key object.
+        ed25519_public_key: The Ed25519 public key object.
     """
 
     # Save the Ed25519 Private Key
@@ -143,7 +155,9 @@ def save_ed25519_keys(name, ed25519_private_key, ed25519_public_key):
 def load_ed25519_keys(name):
     """
     Load the Ed25519 private and public keys from files.
-    :param name: The base name of the key files (without extension).
+
+    Args:
+        name: The base name of the key files (without extension).
     """
     # Load the Ed25519 Private Key
     with open(f"{name}.key", "rb") as f:
@@ -161,9 +175,10 @@ def save_x25519_keys(name, x25519_private_key, x25519_public_key):
     """
     Save the X25519 private and public keys to files.
 
-    :param name: The base name for the key files (without extension).
-    :param x25519_private_key: The X25519 private key to save.
-    :param x25519_public_key: The X25519 public key to save.
+    Args:
+        name: The base name for the key files (without extension).
+        x25519_private_key: The X25519 private key to save.
+        x25519_public_key: The X25519 public key to save.
     """
 
     # Save the X25519 Public Key (for Diffie-Hellman Key Exchange)
@@ -185,11 +200,11 @@ def generate_x509_certificate(config, public_key, ca_private_key, ca_certificate
     """
     Generates an X.509 certificate signed by a Certificate Authority (CA).
 
-    :param config: A dictionary containing certificate information (e.g., COUNTRY_NAME).
-    :param public_key: The public key associated with the certificate.
-    :param ca_private_key: The private key of the Certificate Authority (used for signing).
-    :param ca_certificate: The certificate of the Certificate Authority (used as issuer).
-    :return: The signed certificate.
+    Args:
+        config: A dictionary containing certificate information (e.g., COUNTRY_NAME).
+        public_key: The public key associated with the certificate.
+        ca_private_key: The private key of the Certificate Authority (used for signing).
+        ca_certificate: The certificate of the Certificate Authority (used as issuer).
     """
     subject = x509.Name([
         x509.NameAttribute(NameOID.COUNTRY_NAME, config.get("COUNTRY_NAME", "US")),
@@ -226,9 +241,9 @@ def verify_x509_certificate(certificate, ca_certificate):
     """
     Verify a given certificate using the CA certificate.
 
-    :param certificate: The certificate to verify.
-    :param ca_certificate: The CA certificate used for verification.
-    :return: True if the certificate is valid, False otherwise.
+    Args:
+        certificate: The X.509 certificate to verify.
+        ca_certificate: The X.509 certificate of the Certificate Authority (CA).
     """
     
     # Use the CA's public key to verify the certificate's signature
@@ -281,8 +296,10 @@ def generate_self_signed_x509_certificate(config, private_key, public_key):
 def save_x509_certificate(name, certificate):
     """
     Save the X.509 certificate to a file.
-    :param name: The base name for the certificate file (without extension).
-    :param certificate: The X.509 certificate to save.
+
+    Args:
+        name: The base name for the certificate file (without extension).
+        certificate: The X.509 certificate to save.
     """
     # Save the Self-Signed Certificate
     with open(f"{name}.crt", "wb") as f:
@@ -299,7 +316,9 @@ def bytesToX509Certificate(bytes):
 def der_to_pem(der_bytes):
     """
     Convert DER bytes to properly line-wrapped PEM format (64-char lines).
-    :param der_bytes: The DER-encoded bytes of the certificate.
+
+    Args:
+        der_bytes: The DER-encoded bytes of the certificate.
     """
     b64_encoded = base64.b64encode(der_bytes).decode('ascii')
     # Insert newlines every 64 characters
@@ -310,7 +329,9 @@ def der_to_pem(der_bytes):
 def pem_to_bytes(pem_string):
     """
     Converts a PEM format string to bytes by removing the header, footer, and newlines.
-    :param pem_string: The PEM formatted string.
+
+    Args:
+        pem_string: The PEM formatted string.
     """
     pem_lines = pem_string.strip().splitlines()
     pem_body = [line for line in pem_lines if not line.startswith("-----")]
@@ -370,11 +391,13 @@ def generate_ca(config):
 def save_ca(path, orgname, ca_private_key, ca_public_key, ca_certificate):
     """
     Saves the CA's private key, public key, and certificate to files in `.key`, `.pub`, and `.crt` formats.
-    :param path: The directory where the keys and certificate will be saved.
-    :param orgname: The organization name used for naming the files.
-    :param ca_private_key: The CA's private key (Ed25519).
-    :param ca_public_key: The CA's public key (Ed25519).
-    :param ca_certificate: The CA's self-signed certificate (X.509).
+
+    Args:
+        path: The directory where the keys and certificate will be saved.
+        orgname: The organization name used for naming the files.
+        ca_private_key: The CA's private key (Ed25519).
+        ca_public_key: The CA's public key (Ed25519).
+        ca_certificate: The CA's self-signed certificate (X.509).
     """
 
     if path[-1] != '/':
@@ -406,8 +429,10 @@ def save_ca(path, orgname, ca_private_key, ca_public_key, ca_certificate):
 def load_ca(path, orgname):
     """
     Loads the CA's private key, public key, and certificate from files.
-    :param path: The directory where the keys and certificate are stored.
-    :param orgname: The organization name used for naming the files.
+
+    Args:
+        path: The directory where the keys and certificate are stored.
+        orgname: The organization name used for naming the files.
     """
     path = cure(path)
     private_key, public_key = load_ed25519_keys(path+f"{orgname}")
@@ -419,9 +444,9 @@ def encrypt_token(token_dict, sdhkey) -> bytes:
     """
     Encrypts a token dictionary using AES-GCM with a Diffie-Hellman shared key.
 
-    :param token_dict: The dictionary containing the token data.
-    :param sdhkey: The shared DH key (must be 32 bytes for AES-256).
-    :return: Base64-encoded encrypted token.
+    Args:
+        token_dict: The dictionary containing the token data.
+        sdhkey: The shared DH key (must be 32 bytes for AES-256).
     """
     nonce = token_dict['nonce']
     
@@ -454,11 +479,14 @@ def encrypt_token(token_dict, sdhkey) -> bytes:
     # Return Base64-encoded encrypted data
     return encrypted_data
 
+
 def decrypt_token(encrypted_token, sdhkey) -> dict:
     """
     Decrypts an encrypted token using AES-GCM with a Diffie-Hellman shared key.
-    :param encrypted_token: The Base64-encoded encrypted token.
-    :param sdhkey: The shared DH key (must be 32 bytes for AES-256).
+
+    Args:
+        encrypted_token: The Base64-encoded encrypted token.
+        sdhkey: The shared DH key (must be 32 bytes for AES-256).
     """
     # Decode the encrypted token
     encrypted_data = base64.b64decode(encrypted_token.encode('utf-8'))

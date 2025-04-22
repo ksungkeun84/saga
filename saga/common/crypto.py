@@ -161,11 +161,11 @@ def generate_x509_certificate(config, public_key, ca_private_key, ca_certificate
     """
     Generates an X.509 certificate signed by a Certificate Authority (CA).
 
-    :param config: A dictionary containing certificate information (e.g., COUNTRY_NAME).
-    :param public_key: The public key associated with the certificate.
-    :param ca_private_key: The private key of the Certificate Authority (used for signing).
-    :param ca_certificate: The certificate of the Certificate Authority (used as issuer).
-    :return: The signed certificate.
+    Args:
+        config: A dictionary containing certificate information (e.g., COUNTRY_NAME).
+        public_key: The public key associated with the certificate.
+        ca_private_key: The private key of the Certificate Authority (used for signing).
+        ca_certificate: The certificate of the Certificate Authority (used as issuer).
     """
     subject = x509.Name([
         x509.NameAttribute(NameOID.COUNTRY_NAME, config.get("COUNTRY_NAME", "US")),
@@ -202,9 +202,9 @@ def verify_x509_certificate(certificate, ca_certificate):
     """
     Verify a given certificate using the CA certificate.
 
-    :param certificate: The certificate to verify.
-    :param ca_certificate: The CA certificate used for verification.
-    :return: True if the certificate is valid, False otherwise.
+    Args:
+        certificate: The certificate to verify.
+        ca_certificate: The CA certificate used for verification.
     """
     
     # Use the CA's public key to verify the certificate's signature
@@ -372,9 +372,9 @@ def encrypt_token(token_dict, sdhkey) -> bytes:
     """
     Encrypts a token dictionary using AES-GCM with a Diffie-Hellman shared key.
 
-    :param token_dict: The dictionary containing the token data.
-    :param sdhkey: The shared DH key (must be 32 bytes for AES-256).
-    :return: Base64-encoded encrypted token.
+    Args:
+        token_dict: The dictionary containing the token data.
+        sdhkey: The shared DH key (must be 32 bytes for AES-256).
     """
     nonce = token_dict['nonce']
     

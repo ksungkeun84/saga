@@ -1,4 +1,4 @@
-""""
+"""
     Agent class for the SAGA system.
 """
 import threading
@@ -30,6 +30,9 @@ import saga.common.crypto as sc
 def get_agent_material(dir_path: Path):
     """
     Reads the agent material from the agent.json file in the given directory.
+
+    Args:
+        dir_path (Path): The directory path where the agent.json file is located.
     """
     # Check if dir exists:
     if not os.path.exists(dir_path):
@@ -91,9 +94,11 @@ class Agent:
     def __init__(self, workdir, material, local_agent = None):
         """
         Initializes the Agent object with the given work directory and material.
-        :param workdir: The working directory for the agent.
-        :param material: The material for the agent, which contains the agent's credentials and other information.
-        :param local_agent: An optional local agent object that will be used to run tasks. If not provided, a DummyAgent will be used.
+
+        Args:
+            workdir: The working directory for the agent.
+            material: The material for the agent, which contains the agent's credentials and other information.
+            local_agent: An optional local agent object that will be used to run tasks. If not provided, a DummyAgent will be used.
         """
 
         self.workdir = workdir
@@ -225,6 +230,9 @@ class Agent:
     def serialize(self, obj):
         """
         Serializes the object to a JSON string.
+
+        Args:
+            obj: The object to serialize. It can be a bytes, list, dict, or any other type.
         """
         if isinstance(obj, bytes):
             return base64.b64encode(obj).decode('utf-8')
@@ -238,6 +246,9 @@ class Agent:
     def deserialize(self, obj):
         """
         Deserializes the object from a JSON string.
+
+        Args:
+            obj: The object to deserialize. It can be a base64 encoded string, list, dict, or any other type.
         """
         if isinstance(obj, str):
             try:
@@ -265,11 +276,13 @@ class Agent:
         
         return cert
 
-    def lookup(self, t_aid):
+    def lookup(self, t_aid: str):
         """
         Looks up the target agent by its AID.
         This function sends a request to the provider to look up the target agent's AID.
-        :param t_aid: The AID of the target agent.
+
+        Args:
+            t_aid (str): The AID of the target agent.
         """
         response = requests.post(f"{saga.config.PROVIDER_URL}/lookup", json={'t_aid': t_aid}, verify=saga.config.CA_CERT_PATH, cert=(
             self.workdir+"agent.crt", self.workdir+"agent.key"
@@ -309,8 +322,10 @@ class Agent:
         - Communication Quota: The maximum number of communications allowed with this token.
         - Recipient PAC: The public access control key of the recipient agent.
 
-        :param recipient_pac: The public access control key of the recipient agent.
-        :param sdhk: The shared Diffie-Hellman key used to encrypt the token.
+        Args:
+            recipient_pac: The public access control key of the recipient agent.
+            sdhk: The shared Diffie-Hellman key used to encrypt the token.
+
         """
 
         # Generate a random nonce
@@ -347,8 +362,9 @@ class Agent:
         - If it is expired, it is invalid.
         - If the communication quota is reached, it is invalid.
 
-        :param token: The token to check.
-        :param recipient_pac: The public access control key of the recipient agent.
+        Args:
+            token (str): The token to check.
+            recipient_pac: The public access control key of the recipient agent.
         """
         with self.active_tokens_lock:
             if token not in self.active_tokens.keys():
@@ -390,7 +406,9 @@ class Agent:
         Makes sure that the token that was received from the receiving agent is valid.
         - If it is expired, it is invalid.
         - If the communication quota is reached, it is invalid.
-        :param token: The token to check.
+
+        Args:
+            token (str): The token to check.
         """
         with self.received_tokens_lock:
             if token not in self.received_tokens.keys():
@@ -418,9 +436,11 @@ class Agent:
     def store_received_token(self, r_aid, token_str, token_dict):
         """
         Stores the token that was received from the receiving agent.
-        :param r_aid: The AID of the receiving agent.
-        :param token_str: The string representation of the token.
-        :param token_dict: The dictionary representation of the token.
+
+        Args:
+            r_aid: The AID of the receiving agent.
+            token_str: The string representation of the token.
+            token_dict: The dictionary representation of the token.
         """
         with self.received_tokens_lock:
             self.received_tokens[token_str] = token_dict
@@ -448,8 +468,10 @@ class Agent:
     def send(self, conn, payload):
         """
         Sends a JSON payload over the given connection.
-        :param conn: The connection to send the data over.
-        :param payload: The JSON payload to send.
+
+        Args:
+            conn: The connection to send the data over.
+            payload: The JSON payload to send. It should be a dictionary.
         """
         data = json.dumps(payload).encode('utf-8')
         conn.sendall(len(data).to_bytes(4, 'big') + data)
@@ -457,7 +479,9 @@ class Agent:
     def recv(self, conn):
         """
         Receives a JSON payload from the given connection.
-        :param conn: The connection to receive the data from.
+
+        Args:
+            conn: The connection to receive the data from.
         """
         try:
             length_bytes = conn.recv(4)
@@ -479,10 +503,11 @@ class Agent:
         It sends the initial message to the receiving agent and waits for a response.
         Returns true if the conversation ended from the initiating side.
 
-        :param conn: The connection to the receiving agent.
-        :param token: The token that was received from the receiving agent.
-        :param r_aid: The AID of the receiving agent.
-        :param init_msg: The initial message to send to the receiving agent.
+        Args:
+            conn: The connection to the receiving agent.
+            token (str): The token that was received from the receiving agent.
+            r_aid (str): The AID of the receiving agent.
+            init_msg (str): The initial message to send to the receiving agent.
         """
         agent_instance = None
 
@@ -564,9 +589,10 @@ class Agent:
         It waits for a message from the initiating agent and processes it.
         Returns true if the conversation ended from the receiving side.
 
-        :param conn: The connection to the initiating agent.
-        :param token: The token that was received from the initiating agent.
-        :param recipient_pac: The public access control key of the recipient agent.
+        Args:
+            conn: The connection to the initiating agent.
+            token: The token that was received from the initiating agent.
+            recipient_pac: The public access control key of the recipient agent.
         """
         agent_instance = None
         i = 0
@@ -653,9 +679,10 @@ class Agent:
         2. Verifies the receiving agent's identity and device information.
         3. Creates a secure connection to the receiving agent.
         4. Initiates a conversation with the receiving agent.
-        
-        :param r_aid: The AID of the receiving agent.
-        :param message: The initial message to send to the receiving agent.
+
+        Args:
+            r_aid: The AID of the receiving agent.
+            message: The initial message to send to the receiving agent.
         """
 
         # Start measuring algo overhead:
@@ -913,8 +940,9 @@ class Agent:
         4. Verifies the initiating agent's user certificate and PAC.
         5. If all checks pass, it initiates a conversation with the initiating agent.
 
-        :param conn: The connection object for the incoming connection.
-        :param fromaddr: The address of the initiating agent.
+        Args:
+            conn: The connection object for the incoming connection.
+            fromaddr: The address of the initiating agent.
         """
         try:
             logger.log("NETWORK", f"Incoming connection from {fromaddr}.")

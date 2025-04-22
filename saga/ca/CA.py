@@ -26,8 +26,10 @@ class CA:
     def __init__(self, workdir, config):
         """
         Initializes the CA with the given working directory and configuration.
-        :param workdir: The directory where the CA's keys and certificate will be stored.
-        :param config: A dictionary containing configuration parameters for the CA.
+
+        Args:
+            workdir: The directory where the CA's keys and certificate will be stored.
+            config: A dictionary containing configuration parameters for the CA.
         """
         self.orgname = config.get("ORG_NAME", "CA")
         self.workdir = workdir
@@ -56,8 +58,9 @@ class CA:
         """
         Generates a signed X.509 certificate.
 
-        :param public_key: The public key to be signed.
-        :param config: A dictionary containing certificate information (e.g., COUNTRY_NAME).
+        Args:
+            public_key: The public key to be signed.
+            config: A dictionary containing certificate information (e.g., COUNTRY_NAME).
         """
         return sc.generate_x509_certificate(
             config, 
@@ -70,7 +73,8 @@ class CA:
         """
         Verifies a X.509 certificate.
 
-        :param certificate: The X.509 certificate to verify.
+        Args:
+            certificate: The X.509 certificate to verify.
         """
         sc.verify_x509_certificate(
             certificate=certificate, 

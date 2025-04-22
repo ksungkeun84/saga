@@ -16,6 +16,7 @@ setup(
         "flask_bcrypt",
         "flask_jwt_extended",
         "authlib"
+        "smolagents"
     ],
     classifiers=[
         "Programming Language :: Python :: 3",

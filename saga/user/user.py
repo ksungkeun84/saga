@@ -14,7 +14,8 @@ def get_provider_cert(email):
     This is a 'smarter' way to get the provider's certificate. This function uses the requests library
     to get the certificate of the server.
 
-    :param email: The email of the user.
+    Args:
+        email: The email of the user.
     """
     provider_url = saga.config.PROVIDER_URL
     response = requests.get(provider_url+"/certificate", verify=saga.config.CA_CERT_PATH, cert=(
@@ -44,8 +45,9 @@ def register(email: str=None, password: str=None):
     including a signing key pair and a user certificate, and sends them to the provider for registration.
     If the user already exists, the registration will fail.
 
-    :param email: The email of the user. If None, the user will be prompted to enter it.
-    :param password: The password of the user. If None, the user will be prompted to enter it.
+    Args:
+        email: The email of the user. If None, the user will be prompted to enter it.
+        password: The password of the user. If None, the user will be prompted to enter it.
     """
 
     email = input("Enter email: ") if email is None else email
@@ -113,8 +115,9 @@ def login(email: str=None, password: str=None):
     Login an existing user with the provider. This function retrieves the user's cryptographic material
     from disk, sends the login request to the provider, and verifies the provider's certificate.
 
-    :param email: The email of the user. If None, the user will be prompted to enter it.
-    :param password: The password of the user. If None, the user will be prompted to enter it.
+    Args:
+        email: The email of the user. If None, the user will be prompted to enter it.
+        password: The password of the user. If None, the user will be prompted to enter it.
     """
     global PROVIDER_CERT, PK_Prov
     email = input("Enter email: ") if email is None else email
@@ -156,12 +159,13 @@ def register_agent(name=None, device=None,
     including a signing key pair, a device certificate, and one-time access keys. It then sends the
     registration request to the provider.
 
-    :param name: The name of the agent. If None, the user will be prompted to enter it.
-    :param device: The name of the device where the agent is running. If None, the user will be prompted to enter it.
-    :param IP: The IP address of the device where the agent is running. If None, the user will be prompted to enter it.
-    :param port: The port of the device where the agent is running. If None, the user will be prompted to enter it.
-    :param num_one_time_keys: The number of one-time access keys to generate. If None, the user will be prompted to enter it.
-    :param contact_rulebook: The contact rulebook for the agent. If None, the user will be prompted to enter it.
+    Args:
+        name: The name of the agent. If None, the user will be prompted to enter it.
+        device: The name of the device where the agent is running. If None, the user will be prompted to enter it.
+        IP: The IP address of the device where the agent is running. If None, the user will be prompted to enter it.
+        port: The port of the device where the agent is running. If None, the user will be prompted to enter it.
+        num_one_time_keys: The number of one-time access keys to generate. If None, the user will be prompted to enter it.
+        contact_rulebook: The contact rulebook for the agent. If None, the user will be prompted to enter it.
     """
     global PROVIDER_CERT, PK_Prov
 
