@@ -1,9 +1,8 @@
 from smolagents import CodeAgent, HfApiModel, TransformersModel, OpenAIServerModel, MultiStepAgent, ToolCallingAgent
-from agent_backend.config import AgentConfig, UserConfig
+from agent_backend.config import LocalAgentConfig, UserConfig
 import yaml
 from typing import List, Tuple
 from smolagents import tool
-from smolagents import populate_template
 from smolagents.memory import TaskStep
 import os
 
@@ -17,7 +16,6 @@ import importlib.resources
 
 
 VERBOSITY_LEVEL = 2
-# VERBOSITY_LEVEL = 2
 
 
 class AgentWrapper:
@@ -26,9 +24,8 @@ class AgentWrapper:
     """
     def __init__(self,
                  user_config: UserConfig,
-                 config: AgentConfig,
+                 config: LocalAgentConfig,
                  prompt_filename: str):
-        # TODO: should not provide all of user-config (airgap ftw) - think about this later
         self.user_config = user_config
         self.config = config
         self.tool_collections = []
@@ -393,7 +390,7 @@ class CodeAgentWrapper(AgentWrapper):
     """
     def __init__(self,
                  user_config: UserConfig,
-                 config: AgentConfig):
+                 config: LocalAgentConfig):
         super().__init__(user_config=user_config, 
                          config=config,
                          prompt_filename="CodeAgent.yaml")
@@ -419,43 +416,20 @@ class CodeAgentWrapper(AgentWrapper):
         return agent
 
 
-class ToolCallingAgentWrapper(AgentWrapper):
-    """
-        Wrapper class for a ToolCallingAgent from smolagents.
-    """
-    def __init__(self,
-                 user_config: UserConfig,
-                 config: AgentConfig):
-        super().__init__(user_config=user_config, 
-                         config=config,
-                         prompt_filename="ToolCallingAgent.yaml")
-    
-    def _create_local_agent_object(self, **kwargs) -> ToolCallingAgent:
-        agent = ToolCallingAgent(
-            tools = self.tool_collections,
-            model = self.model,
-            verbosity_level=VERBOSITY_LEVEL
-        )
-
-        # Override the system template
-        agent.system_prompt = populate_template(
-            kwargs['template_text'],
-            variables={
-                "tools": agent.tools,
-                "managed_agents": agent.managed_agents
-            },
-        )
-
-        return agent
-
-
 def get_agent(user_config: UserConfig,
-              config: AgentConfig) -> AgentWrapper:
+              config: LocalAgentConfig) -> AgentWrapper:
+    """
+        Function to create an instance of a local agent object.
+        Args:
+            user_config( UserConfig): Configuration for the user.
+            config (LocalAgentConfig): Configuration for the agent.
+        Returns:
+            AgentWrapper: An instance of the agent wrapper.
+    """
     if config.base_agent_type == "CodeAgent":
         return CodeAgentWrapper(user_config=user_config,
                                 config=config)
     elif config.base_agent_type == "ToolCallingAgent":
-        return ToolCallingAgentWrapper(user_config=user_config,
-                                       config=config)
+        raise NotImplementedError("ToolCallingAgent is not implemented yet. Use CodeAgentWrapper instead.")
 
     raise NotImplementedError(f"Base agent type {config.base_agent_type} not supported.")

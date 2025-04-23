@@ -78,7 +78,7 @@ def main(mode, config_path, other_user_config_path=None):
         raise ValueError("No agent with name 'calendar_agent' found in the configuration.")
 
     # Initialize local agent
-    local_agent = get_agent(config, config.agents[agent_index])
+    local_agent = get_agent(config, config.agents[agent_index].local_agent_config)
 
     # Focus on first agent - infer credentials endpoint
     credentials_endpoint = os.path.join(ROOT_DIR, f"user/{config.email}:{config.agents[agent_index].name}/")
