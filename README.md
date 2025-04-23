@@ -36,13 +36,7 @@ Take note of the `endpoint` where this CA is hosted and update it under `config.
 
 #### 2. Setup the Provider
 
-Generate valid provider credentials
-
-```bash
-python generate_credentials.py provider saga/provider/
-```
-
-Host this provider service at some endpoint by running the following command:
+Host this provider service at some endpoint by running the following command. This will automatically generate Provider credentials and get them signed by the CA:
 
 ```bash
 cd saga/provider/ && python provider.py

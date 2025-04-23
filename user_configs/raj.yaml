@@ -7,7 +7,7 @@ agents:
     description: "An agent that can interact with the user's calendar."
     endpoint:
       ip: 127.0.0.1
-      port: 7000
+      port: 7003
       device_name: localhost
     contact_rulebook: [
       {
@@ -40,7 +40,7 @@ agents:
     description: "An agent that can send and receive emails."
     endpoint:
       ip: 127.0.0.1
-      port: 7001
+      port: 7004
       device_name: localhost
     contact_rulebook: [
       {
@@ -70,7 +70,7 @@ agents:
     description: "An agent that can help in writing."
     endpoint:
       ip: 127.0.0.1
-      port: 7002
+      port: 7005
       device_name: localhost
     contact_rulebook: [
       {

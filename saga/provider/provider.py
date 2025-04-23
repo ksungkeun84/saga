@@ -65,7 +65,7 @@ class Provider:
         if not (os.path.exists(self.workdir+f"{self.name}.key") and os.path.exists(self.workdir+f"{self.name}.pub") and os.path.exists(self.workdir+f"{self.name}.crt")):
             # Generate cryptographic material for signing. 
             self.SK_Prov, self.PK_Prov = sc.generate_ed25519_keypair()
-            self.cert = self.CA.sign(self.PK_Prov, config=saga.config.PROVIDER_CONFIG.config)
+            self.cert = self.CA.sign(self.PK_Prov, config=saga.config.PROVIDER_CONFIG['config'])
             sc.save_ed25519_keys(self.workdir+f"{self.name}", self.SK_Prov, self.PK_Prov)
             sc.save_x509_certificate(self.workdir+f"{self.name}", self.cert)
         else:
