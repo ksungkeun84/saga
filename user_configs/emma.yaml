@@ -6,9 +6,9 @@ agents:
   - name: "calendar_agent"
     description: "An agent that can interact with the user's calendar."
     endpoint:
-      ip: 192.168.2.57
+      ip: 127.0.0.1
       port: 7000
-      device_name: biggpu
+      device_name: emma_server
     contact_rulebook: [
       {
         "pattern": "*",
@@ -39,9 +39,9 @@ agents:
   - name: "email_agent"
     description: "An agent that can send and receive emails."
     endpoint:
-      ip: 192.168.2.57
+      ip: 127.0.0.1
       port: 7001
-      device_name: biggpu
+      device_name: emma_server
     contact_rulebook: [
       {
         "pattern": "*",
@@ -70,9 +70,9 @@ agents:
   - name: "writing_agent"
     description: "An agent that can help in writing."
     endpoint:
-      ip: 192.168.2.57
+      ip: 127.0.0.1
       port: 7002
-      device_name: biggpu
+      device_name: emma_server
     contact_rulebook: [
       {
         "pattern": "*",
