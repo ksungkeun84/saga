@@ -23,10 +23,14 @@ To set things up, we will first begin by starting a `CA` server, followed by a `
 Generate valid credentials and host the *.crt, *.key, and *pub files at some endpoint.
 
 ```bash
-python generate_credentials.py ca <PATH_TO_SAVE_CA_FILES>
+python generate_credentials.py ca saga/ca/
 ```
 
 One way to host these files is to run a simple fileserver, such as a python HTTP server.
+
+```bash
+cd saga/ca/ && python -m http.server
+```
 
 Take note of the `endpoint` where this CA is hosted and update it under `config.yaml` for the `ca`.
 
@@ -35,13 +39,13 @@ Take note of the `endpoint` where this CA is hosted and update it under `config.
 Generate valid provider credentials
 
 ```bash
-python generate_credentials.py provider <PATH_TO_SAVE_PROVIDER_FILES>
+python generate_credentials.py provider saga/provider/
 ```
 
 Host this provider service at some endpoint by running the following command:
 
 ```bash
-cd provider/ && python provider.py
+cd saga/provider/ && python provider.py
 ```
 
 Take note of the `endpoint` and update `config.yaml` for the `provider`.
@@ -51,7 +55,7 @@ Take note of the `endpoint` and update `config.yaml` for the `provider`.
 The next step is to run the user client in order to register agents with the provider:
 
 ```bash
-cd user/ && python user.py
+cd saga/user/ && python user.py
 ```
 
 > __Note__: all generated cryptographic material for the user will be placed within a `keys/` subdirectory. The user's public/private keys will be stored in the `<uid>.pub` and `<uid>.key` format.

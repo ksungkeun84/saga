@@ -8,7 +8,7 @@ agents:
     endpoint:
       ip: 127.0.0.1
       port: 7000
-      device_name: raj_server
+      device_name: localhost
     contact_rulebook: [
       {
         "pattern": "*",
@@ -41,7 +41,7 @@ agents:
     endpoint:
       ip: 127.0.0.1
       port: 7001
-      device_name: raj_server
+      device_name: localhost
     contact_rulebook: [
       {
         "pattern": "*",
@@ -71,7 +71,7 @@ agents:
     endpoint:
       ip: 127.0.0.1
       port: 7002
-      device_name: raj_server
+      device_name: localhost
     contact_rulebook: [
       {
         "pattern": "*",

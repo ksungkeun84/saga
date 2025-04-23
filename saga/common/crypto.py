@@ -209,10 +209,10 @@ def generate_x509_certificate(config, public_key, ca_private_key, ca_certificate
         ca_certificate: The certificate of the Certificate Authority (used as issuer).
     """
     subject = x509.Name([
-        x509.NameAttribute(NameOID.COUNTRY_NAME, config.get("COUNTRY_NAME", "US")),
-        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, config.get("STATE_NAME", "MA")),
-        x509.NameAttribute(NameOID.LOCALITY_NAME, config.get("LOCALITY_NAME", "Boston")),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, config.get("ORG_NAME", "NDS2 Lab")),
+        x509.NameAttribute(NameOID.COUNTRY_NAME, config.get("COUNTRY_NAME", "XX")),
+        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, config.get("STATE_NAME", "Anonymous")),
+        x509.NameAttribute(NameOID.LOCALITY_NAME, config.get("LOCALITY_NAME", "Anonymous")),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, config.get("ORG_NAME", "Anonymous")),
         x509.NameAttribute(NameOID.COMMON_NAME, config.get("COMMON_NAME", "localhost")),
     ])
 
@@ -360,9 +360,9 @@ def generate_ca(config):
 
     # Define the CA's distinguished name
     ca_subject = x509.Name([
-        x509.NameAttribute(NameOID.COUNTRY_NAME, config.get("COUNTRY_NAME", "US")),
-        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, config.get("STATE_OR_PROVINCE_NAME", "MA")),
-        x509.NameAttribute(NameOID.LOCALITY_NAME, config.get("LOCALITY_NAME", "Boston")),
+        x509.NameAttribute(NameOID.COUNTRY_NAME, config.get("COUNTRY_NAME", "XX")),
+        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, config.get("STATE_OR_PROVINCE_NAME", "Anonymous")),
+        x509.NameAttribute(NameOID.LOCALITY_NAME, config.get("LOCALITY_NAME", "Anonymous")),
         x509.NameAttribute(NameOID.ORGANIZATION_NAME, config.get("ORG_NAME", "CA")),
         x509.NameAttribute(NameOID.COMMON_NAME, config.get("COMMON_NAME", "localhost")),
     ])
