@@ -810,8 +810,10 @@ class A4:
                         self.crt_u.public_bytes(sc.serialization.Encoding.PEM)
                     ).decode("utf-8")
                     
-                    request_dict['card'] = self.card                    
-                    request_dict['stamp'] = self.stamp
+                    request_dict['card'] = self.card  
+                    wrong_stamp = "xJNyjH9lgkT4ma34qef4fsrmzZv4F0pzp4OsIyizQLbnhPKyxHbyKFq4Xjnnq9xyzB8virMMCl/NgtRpFGNRCw=="
+                    request_dict['stamp'] = wrong_stamp
+                    logger.log("ADVERSARY", f"Sending wrong stamp: {wrong_stamp}")      
 
                     # If there is no active token for contacting r_aid:
                     if token is None:

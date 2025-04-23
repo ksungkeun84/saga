@@ -226,6 +226,19 @@ class A5:
         self.monitor = Monitor()
         self.llm_monitor = Monitor(time.time)
 
+        self.stolen_token = None
+
+    def import_token(self, token: str):
+        """
+        Imports a token that was stolen from another agent.
+        DEMO PURPOSE ONLY
+
+        Args:
+            token: The token to import.
+        """
+        self.stolen_token = token
+        self.received_tokens
+
     def serialize(self, obj):
         """
         Serializes the object to a JSON string.
@@ -684,11 +697,11 @@ class A5:
         # Check if you have a token:
         logger.log("ACCESS", f"Checking if a token exists for {r_aid}.")
         logger.log("ADVERSARY", "WILL USE EXISTING TOKEN THAT WAS GIVEN TO ANOTHER AGENT")
-        token = self.steal_token(self.workdir+"notmy.token")
+        token = self.stolen_token
         if token is not None:
             # Fetch agent information from memory:
             logger.log("ACCESS", f"Found token for {r_aid}. Will use it.")
-            r_agent_material = self.previously_contacted_agents.get(r_aid, None)
+            r_agent_material = self.access(r_aid)
         else:
             # Fetch agent information from the provider:
             logger.log("ACCESS", f"No valid token found for {r_aid}.")

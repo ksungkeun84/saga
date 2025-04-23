@@ -58,7 +58,7 @@ def register(email: str=None, password: str=None):
     sk_u, pk_u = sc.generate_ed25519_keypair()
 
     # Generate user certificate:
-    custom_user_config = saga.config.USER_DEFAULT_CONFIG.config.copy()
+    custom_user_config = saga.config.USER_DEFAULT_CONFIG.copy()
     custom_user_config["COMMON_NAME"] = email
     user_cert = CA.sign(
         public_key=pk_u, # PK_U 
@@ -197,7 +197,7 @@ def register_agent(name=None, device=None,
     sk_a, pk_a = sc.generate_ed25519_keypair() # SK_A, PK_A
 
     # Generate the certificate of the Agent for TLS communication:
-    custom_agent_config = saga.config.AGENT_DEFAULT_CONFIG.config.copy()
+    custom_agent_config = saga.config.AGENT_DEFAULT_CONFIG.copy()
     custom_agent_config["COMMON_NAME"] = aid
     custom_agent_config["IP"] = IP
     agent_cert = CA.sign(
