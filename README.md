@@ -4,38 +4,61 @@ Repository for the SAGA project.
 
 ## Requirements
 
+Install the `saga` package:
+
+```bash
+pip install -e .
+```
+
 Make sure that `mongoDB` is installed on the Provider side and the mongoDB server is up and running.
 
-## Instructions
+## Setup
 
-#### Setup
+To set things up, we will first begin by starting a `CA` server, followed by a `Provider` server for our SAGA protocol.
 
-1. Generate valid credentials and host the *.crt, *.key, and *pub files at some endpoint (specified via `endpoint` under `ca` in `config.yaml`)
-2. Generate provider credentials and host the provider service at some endpoint (specified via `endpoint` under `provider` in `config.yaml`)
+#### 1. Setup a CA
 
-### 1. Provider
+Generate valid credentials and host the *.crt, *.key, and *pub files at some endpoint.
 
-The first step is to fire-up the provider. This is done by navigating into the provider's directory and running the `provider.py` script:
+```bash
+python generate_credentials.py ca <PATH_TO_SAVE_CA_FILES>
+```
+
+One way to host these files is to run a simple fileserver, such as a python HTTP server.
+
+Take note of the `endpoint` where this CA is hosted and update it under `config.yaml` for the `ca`.
+
+#### 2. Setup the Provider
+
+Generate valid provider credentials
+
+```bash
+python generate_credentials.py provider <PATH_TO_SAVE_CA_FILES>
+```
+
+Host this provider service at some endpoint by running the following command:
 
 ```bash
 cd provider/ && python provider.py
 ```
 
-### 2. User
+Take note of the `endpoint` and update `config.yaml` for the `provider`.
 
-The next step is to run the user client in order to register agents with the provider. This is done by navigating into the user's directory and running the `user.py` script:
+## User Registration
+
+The next step is to run the user client in order to register agents with the provider:
 
 ```bash
 cd user/ && python user.py
 ```
 
-Note: all generated cryptographic material for the user will be placed within a `keys/` subdirectory. The user's public/private keys will be stored in the `<uid>.pub` and `<uid>.key` format.
+> __Note__: all generated cryptographic material for the user will be placed within a `keys/` subdirectory. The user's public/private keys will be stored in the `<uid>.pub` and `<uid>.key` format.
 
-### 3. Agents
+## Agent Registration
 
-Assume the user Alice wants to register a new agent under the name Astro. Astro is an email client agent and is responsible for handling Alice's inbox. In order to register Astro, Alice first needs to be registered with the provider using the `register` endpoint. 
+Assume the user `Alice` wants to register a new agent under the name `Astro`, an email client agent responsible for handling Alice's inbox. In order to register `Astro`, `Alice` first needs to be registered with the provider using the `register` endpoint. 
 
-```python
+```bash
 1. Register
 2. Login
 3. Google OAuth Login
@@ -49,7 +72,7 @@ Generating cryptographic material...
 
 After successful registration, Alice needs to authenticate herself in order to register Astro under her name. She does it with the `login` endpoint. 
 
-```python
+```bash
 ======= SAGA User Client CLI =======
 1. Register
 2. Login
@@ -63,7 +86,7 @@ Login successful. Token: eyJhbGciOiJIUzI1NiIsInR5cCI6...
 
 Finally, Alice proceeds with providing all the required material (agent device and networking information, cryptographic content, etc.) for Astro to operate within the SAGA network. The agent registration is done via the `register_agent` endpoint.
 
-```python
+```bash
 ======= SAGA User Client CLI =======
 1. Register
 2. Login
@@ -78,7 +101,7 @@ Enter number of one-time prekeys: 10
 Agent 'astro' registered successfully.
 ```
 
-__Note__: Once an agent has been successfully registered with the provider, a new subdirectory within the `user` directory, e.g. `user/<aid>` or in our case `user/alice@herdomain.com:astro`. This is Astro's woring directory. This directory contains the agent's manifest: `agent.json` listing the required metadata for the new agent to be able to operate within the SAGA network:
+> __Note__: Once an agent has been successfully registered with the provider, a new subdirectory within the `user` directory, e.g. `user/<aid>` or in our case `user/alice@herdomain.com:astro`. This is Astro's woring directory. This directory contains the agent's manifest: `agent.json` listing the required metadata for the new agent to be able to operate within the SAGA network:
 
 ```json
 {
@@ -100,7 +123,7 @@ __Note__: Once an agent has been successfully registered with the provider, a ne
 }
 ```
 
-### Accepting conversations:
+## Agent Communication
 
 Once the new agent has been registered with the provider and its manifest has been created, the new SAGA agent can be run by simply creating a new saga `Agent` instance:
 
@@ -130,8 +153,7 @@ bisco.connect("alice@herdomain.com:astro")
 
 ### Setup 
 
-To get started, register the user using their configuration. We provide template user configs under `user_configs`.
-To register a user, run
+To get started, register the user using their configuration. We provide template user configs under `user_configs`. To register a user, run
 
 ```bash
 cd saga/user
@@ -180,3 +202,5 @@ python <task.py> query ../user_configs/config2.yaml ../user_configs/config1.yaml
 ```
 
 The agent corresponding to `config2.yaml` will then contact `config1.yaml` and they work towards their shared goal.
+
+> __Note__: Make sure you set `OPENAI_API_KEY` and/or `ON_DEVICE_LLM_ENDPOINT` environment variables before running experiments.

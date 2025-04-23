@@ -390,6 +390,7 @@ def generate_ca(config):
     )
     return ca_private_key, ca_public_key, ca_certificate
 
+
 def save_ca(path, orgname, ca_private_key, ca_public_key, ca_certificate):
     """
     Saves the CA's private key, public key, and certificate to files in `.key`, `.pub`, and `.crt` formats.
@@ -427,6 +428,7 @@ def save_ca(path, orgname, ca_private_key, ca_public_key, ca_certificate):
     # Save CA Certificate (.crt)
     with open(path+f"{orgname}.crt", "wb") as cert_file:
         cert_file.write(ca_certificate.public_bytes(serialization.Encoding.PEM))
+
 
 def load_ca(path, orgname):
     """

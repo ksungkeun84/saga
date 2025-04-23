@@ -61,18 +61,22 @@ class AgentWrapper:
                 hf_api_url="https://api-inference.huggingface.co/models/"
             )
         elif self.config.model_type == "OpenAIServerModel":
+            API_KEY = os.getenv("OPENAI_API_KEY", None) if "https://api.openai.com" in self.config.api_base else ""
+            if API_KEY is None:
+                raise ValueError("OPENAI_API_KEY environment variable must be set for OpenAIServerModel.")
+
             if "o3-mini" in self.config.model:
                 # Reasoning models currently do not support temperature control
                 model = OpenAIServerModel(
                     model_id=self.config.model,
                     api_base=self.config.api_base,
-                    api_key=self.config.api_key,
+                    api_key=API_KEY,
             )
             else:
                 model = OpenAIServerModel(
                     model_id=self.config.model,
                     api_base=self.config.api_base,
-                    api_key=self.config.api_key,
+                    api_key=API_KEY,
                     temperature=0.0,
                 )
         else:
