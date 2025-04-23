@@ -177,3 +177,4 @@ cython_debug/
 *.pem
 
 .vscode/*
+saga/user/*/*.json

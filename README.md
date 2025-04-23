@@ -1,5 +1,7 @@
 # SAGA: A Security Architecture for Governing AI Agentic Systems
 
+<img src="assets/logo.png" alt="SAGA logo" width="150"/>
+
 Repository for the SAGA project.
 
 ## Requirements
@@ -33,7 +35,7 @@ Take note of the `endpoint` where this CA is hosted and update it under `config.
 Generate valid provider credentials
 
 ```bash
-python generate_credentials.py provider <PATH_TO_SAVE_CA_FILES>
+python generate_credentials.py provider <PATH_TO_SAVE_PROVIDER_FILES>
 ```
 
 Host this provider service at some endpoint by running the following command:
@@ -178,7 +180,7 @@ cd experiments/
 python seed_tool_data.py
 ```
 
-This will use data from `experiments/data` to seed tool-related data for each user
+This will use data from `experiments/data` to seed tool-related data for each user. Some of this seed data is based on the profiles used in the paper [Firewalls to Secure Dynamic LLM Agentic Networks](https://github.com/microsoft/Firewalled-Agentic-Networks), and is purely synthetic.
 
 ### Running tasks
 
@@ -203,4 +205,4 @@ python <task.py> query ../user_configs/config2.yaml ../user_configs/config1.yaml
 
 The agent corresponding to `config2.yaml` will then contact `config1.yaml` and they work towards their shared goal.
 
-> __Note__: Make sure you set `OPENAI_API_KEY` and/or `ON_DEVICE_LLM_ENDPOINT` environment variables before running experiments.
+> __Note__: Make sure you set `OPENAI_API_KEY` as an environment variable before running experiments.
