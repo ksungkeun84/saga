@@ -1,6 +1,6 @@
-name: John Doe
-email: john@mail.com
-passwd: "john"
+name: Alice Smith
+email: alice@mail.com
+passwd: "alice"
 
 agents:
   - name: "dummy_agent"

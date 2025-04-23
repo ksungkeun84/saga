@@ -1,6 +1,6 @@
-name: George Smith
-email: george@mail.com
-passwd: "george"
+name: Bob Smith
+email: bob@mail.com
+passwd: "bob"
 
 agents:
   - name: "dummy_agent"

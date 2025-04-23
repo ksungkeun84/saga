@@ -1,6 +1,6 @@
-name: Mom Jensen
-email: mom@mail.com
-passwd: "mom"
+name: Mallory Jensen
+email: mallory@mail.com
+passwd: "mallory"
 
 agents:
   - name: "dummy_agent"
