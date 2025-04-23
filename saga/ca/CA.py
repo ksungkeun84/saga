@@ -31,7 +31,7 @@ class CA:
             workdir: The directory where the CA's keys and certificate will be stored.
             config: A dictionary containing configuration parameters for the CA.
         """
-        self.orgname = config.get("ORG_NAME", "CA")
+        self.orgname = config.get("config").get("ORG_NAME", "ca")
         self.workdir = workdir
         if self.workdir[-1] != '/':
             self.workdir += '/'
