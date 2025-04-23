@@ -1,12 +1,12 @@
-from smolagents import CodeAgent, HfApiModel, TransformersModel, OpenAIServerModel, MultiStepAgent, ToolCallingAgent
-from agent_backend.config import LocalAgentConfig, UserConfig
+from smolagents import CodeAgent, HfApiModel, TransformersModel, OpenAIServerModel, MultiStepAgent
+from agent_backend.config import LocalAgentConfig
 import yaml
 from typing import List, Tuple
 from smolagents import tool
 from smolagents.memory import TaskStep
 import os
 
-from saga.config import ROOT_DIR
+from saga.config import ROOT_DIR, UserConfig
 
 from agent_backend.tools.email import LocalEmailClientTool
 from agent_backend.tools.calendar import LocalCalendarTool

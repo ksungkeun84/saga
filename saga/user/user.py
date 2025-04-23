@@ -17,8 +17,8 @@ def get_provider_cert(email):
     Args:
         email: The email of the user.
     """
-    provider_url = saga.config.PROVIDER_URL
-    response = requests.get(provider_url+"/certificate", verify=saga.config.CA_CERT_PATH, cert=(
+    PROVIDER_ENDPOINT = saga.config.PROVIDER_CONFIG.get('endpoint')
+    response = requests.get(PROVIDER_ENDPOINT+"/certificate", verify=saga.config.CA_CERT_PATH, cert=(
         saga.config.USER_WORKDIR+"/keys/"+email+".crt", saga.config.USER_WORKDIR+"/keys/"+email+".key"
     ))
     cert_bytes = base64.b64decode(response.json().get('certificate'))
@@ -58,7 +58,7 @@ def register(email: str=None, password: str=None):
     sk_u, pk_u = sc.generate_ed25519_keypair()
 
     # Generate user certificate:
-    custom_user_config = saga.config.USER_DEFAULT_CONFIG.copy()
+    custom_user_config = saga.config.USER_DEFAULT_CONFIG.config.copy()
     custom_user_config["COMMON_NAME"] = email
     user_cert = CA.sign(
         public_key=pk_u, # PK_U 
@@ -74,7 +74,7 @@ def register(email: str=None, password: str=None):
 
     monitor.stop("user:user_register")
     logger.log("OVERHEAD", f"user:user_register: {monitor.elapsed('user:user_register')}")
-    response = requests.post(f"{saga.config.PROVIDER_URL}/register", json={
+    response = requests.post(f"{saga.config.PROVIDER_CONFIG.get('endpoint')}/register", json={
         'uid': email, # uid
         'password': password, # pwd 
         # CRYPTOGRAPHIC MATERIAL TO SUBMIT TO THE PROVIDER:
@@ -123,7 +123,7 @@ def login(email: str=None, password: str=None):
     email = input("Enter email: ") if email is None else email
     password = input("Enter password: ") if password is None else password
 
-    response = requests.post(f"{saga.config.PROVIDER_URL}/login", json={'uid': email, 'password': password}, verify=saga.config.CA_CERT_PATH, cert=(
+    response = requests.post(f"{saga.config.PROVIDER_CONFIG.get('endpoint')}/login", json={'uid': email, 'password': password}, verify=saga.config.CA_CERT_PATH, cert=(
         saga.config.USER_WORKDIR+"/keys/"+email+".crt", saga.config.USER_WORKDIR+"/keys/"+email+".key"
     )) 
     if response.status_code == 200:
@@ -197,7 +197,7 @@ def register_agent(name=None, device=None,
     sk_a, pk_a = sc.generate_ed25519_keypair() # SK_A, PK_A
 
     # Generate the certificate of the Agent for TLS communication:
-    custom_agent_config = saga.config.AGENT_DEFAULT_CONFIG.copy()
+    custom_agent_config = saga.config.AGENT_DEFAULT_CONFIG.config.copy()
     custom_agent_config["COMMON_NAME"] = aid
     custom_agent_config["IP"] = IP
     agent_cert = CA.sign(
@@ -286,7 +286,7 @@ def register_agent(name=None, device=None,
 
     monitor.stop("user:agent_register")
 
-    response = requests.post(f"{saga.config.PROVIDER_URL}/register_agent", json={
+    response = requests.post(f"{saga.config.PROVIDER_CONFIG.get('endpoint')}/register_agent", json={
         'uid': state['uid'], # The user's uid
         'jwt': provider_tokens[-1], # Provider's JWT
         'application': application

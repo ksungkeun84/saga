@@ -65,7 +65,7 @@ class Provider:
         if not (os.path.exists(self.workdir+f"{self.name}.key") and os.path.exists(self.workdir+f"{self.name}.pub") and os.path.exists(self.workdir+f"{self.name}.crt")):
             # Generate cryptographic material for signing. 
             self.SK_Prov, self.PK_Prov = sc.generate_ed25519_keypair()
-            self.cert = self.CA.sign(self.PK_Prov, config=saga.config.PROVIDER_CONFIG)
+            self.cert = self.CA.sign(self.PK_Prov, config=saga.config.PROVIDER_CONFIG.config)
             sc.save_ed25519_keys(self.workdir+f"{self.name}", self.SK_Prov, self.PK_Prov)
             sc.save_x509_certificate(self.workdir+f"{self.name}", self.cert)
         else:
@@ -585,7 +585,7 @@ class Provider:
 # Run the provider
 if __name__ == "__main__":
     # Read the provider URI from config.py
-    provider_uri = saga.config.PROVIDER_URL
+    provider_uri = saga.config.PROVIDER_CONFIG.get('endpoint')
     # Read the port from this
     port = int(provider_uri.split(":")[-1])
 

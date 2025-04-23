@@ -159,8 +159,8 @@ class A5:
         This is a 'smarter' way to get the provider's certificate. This function uses the requests library
         to get the certificate of the server.
         """
-        provider_url = saga.config.PROVIDER_URL
-        response = requests.get(provider_url+"/certificate", verify=saga.config.CA_CERT_PATH, cert=(
+        PROVIDER_ENDPOINT = saga.config.PROVIDER_CONFIG.get('endpoint')
+        response = requests.get(PROVIDER_ENDPOINT+"/certificate", verify=saga.config.CA_CERT_PATH, cert=(
             self.workdir+"agent.crt", self.workdir+"agent.key"
         ))
         cert_bytes = base64.b64decode(response.json().get('certificate'))
@@ -169,7 +169,7 @@ class A5:
         return cert
 
     def lookup(self, t_aid):
-        response = requests.post(f"{saga.config.PROVIDER_URL}/lookup", json={'t_aid': t_aid}, verify=saga.config.CA_CERT_PATH, cert=(
+        response = requests.post(f"{saga.config.PROVIDER_CONFIG.get('endpoint')}/lookup", json={'t_aid': t_aid}, verify=saga.config.CA_CERT_PATH, cert=(
             self.workdir+"agent.crt", self.workdir+"agent.key"
         )) 
         if response.status_code == 200:
@@ -183,7 +183,7 @@ class A5:
             return None        
         
     def access(self, t_aid):
-        response = requests.post(f"{saga.config.PROVIDER_URL}/access", json={'i_aid':self.aid, 't_aid': t_aid}, verify=saga.config.CA_CERT_PATH, cert=(
+        response = requests.post(f"{saga.config.PROVIDER_CONFIG.get('endpoint')}/access", json={'i_aid':self.aid, 't_aid': t_aid}, verify=saga.config.CA_CERT_PATH, cert=(
             self.workdir+"agent.crt", self.workdir+"agent.key"
         )) 
         if response.status_code == 200:

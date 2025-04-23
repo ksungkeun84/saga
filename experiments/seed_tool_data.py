@@ -4,13 +4,12 @@
 """
 import os
 import json
-from agent_backend.config import UserConfig
 from pymongo import MongoClient
 
 from agent_backend.tools.calendar import LocalCalendarTool
 from agent_backend.tools.email import LocalEmailClientTool
 from agent_backend.tools.documents import LocalDocumentsTool
-from saga.config import ROOT_DIR, MONGO_URI_FOR_TOOLS
+from saga.config import ROOT_DIR, MONGO_URI_FOR_TOOLS, UserConfig
 
 
 def read_jsonl_data(path):
@@ -38,7 +37,7 @@ def main(user_configs_path):
         config = UserConfig.load(config_path, drop_extra_fields=True)
         all_user_tools = []
         for agent in config.agents:
-            all_user_tools.extend(agent.tools)
+            all_user_tools.extend(agent.local_agent_config.tools)
         
         # Get user details
         name = config.name

@@ -1,15 +1,13 @@
 """
     Ask one agent to collect receipts from their email and help file an expense report.
 """
-from agent_backend.config import UserConfig
 from agent_backend.base import get_agent
 import os
 
 from agent_backend.tools.email import LocalEmailClientTool
-from agent_backend.config import get_index_of_agent
 
 from saga.agent import Agent, get_agent_material
-from saga.config import ROOT_DIR
+from saga.config import ROOT_DIR, UserConfig, get_index_of_agent
 
 
 class ExpenseReportTest:

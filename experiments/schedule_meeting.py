@@ -1,16 +1,14 @@
 """
     Ask one agent to schedule a meeting with another agent.
 """
-from agent_backend.config import UserConfig
 from agent_backend.base import get_agent
 import os
 from datetime import datetime
 
 from agent_backend.tools.calendar import LocalCalendarTool
-from agent_backend.config import get_index_of_agent
 
 from saga.agent import Agent, get_agent_material
-from saga.config import ROOT_DIR
+from saga.config import ROOT_DIR, UserConfig, get_index_of_agent
 
 
 class MeetingScheduleTest:

@@ -4,16 +4,14 @@ Repository for the SAGA project.
 
 ## Requirements
 
-Edit the `config.py`'s root directory location to your saga src. 
-
 Make sure that `mongoDB` is installed on the Provider side and the mongoDB server is up and running.
 
 ## Instructions
 
 #### Setup
 
-1. Generate valid credentials and host the *.crt, *.key, and *pub files at some endpoint (specified via `CA_ENDPOINT` in `config.py`)
-2. Generate provider credentials and host the provider service at some endpoint (specified via `PROVIDER_URL` in `config.py)
+1. Generate valid credentials and host the *.crt, *.key, and *pub files at some endpoint (specified via `endpoint` under `ca` in `config.yaml`)
+2. Generate provider credentials and host the provider service at some endpoint (specified via `endpoint` under `provider` in `config.yaml`)
 
 ### 1. Provider
 

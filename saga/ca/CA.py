@@ -13,7 +13,7 @@ def download_file(url, save_path):
                 file.write(chunk)
         logger.log("CA", f"File downloaded: {save_path}")
     else:
-        raise ValueError(f"Failed to download file from {url}. Status code: {response.status_code}")
+        raise ValueError(f"Failed to download file from {url}  Status code: {response.status_code}")
 
 
 class CA:
@@ -40,9 +40,9 @@ class CA:
             os.mkdir(self.workdir)
         
         # Download relevant files from endpoint into current directory
-        endpoint = saga.config.CA_ENDPOINT
+        endpoint = saga.config.CA_CONFIG.get('endpoint')
         if endpoint is None:
-            raise ValueError("CA_ENDPOINT is None - please specify endpoint for CA")
+            raise ValueError("CA endpoint is None - please specify endpoint for CA in config.yaml")
         
         # Download files from endpoint
         logger.log("CA", f"Downloading files from CA endpoint: {endpoint}")

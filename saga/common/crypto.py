@@ -1,7 +1,6 @@
 """
     SAGA Cryptographic module for key generation.
 """
-
 import base64
 import ipaddress
 import json
@@ -12,12 +11,12 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.x509.oid import NameOID
 from cryptography import x509
 import datetime
-
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 
 
 def cure(path):
+    """Ensure the path ends with a slash."""
     return path if path[-1]=='/' else path+"/"
 
 def generate_ed25519_keypair():
@@ -58,18 +57,28 @@ def generate_x25519_keypair():
 def bytesToPublicX25519Key(key_bytes):
     """
     Convert bytes to an X25519 Public key
+
+    Args:
+        key_bytes: The bytes representing the X25519 public key.
     """
     return x25519.X25519PublicKey.from_public_bytes(key_bytes)
 
 def bytesToPrivateX25519Key(key_bytes):
     """
     Convert bytes to an X25519 Public key
+
+    Args:
+        key_bytes: The bytes representing the X25519 private key.
     """
     return x25519.X25519PrivateKey.from_private_bytes(key_bytes)
 
 def sign_message(ed25519_private_key, message):
     """
     Sign a message using the Ed25519 private key.
+
+    Args:
+        ed25519_private_key: The Ed25519 private key object.
+        message: The message to sign.
     """
 
     # Sign the Message Using the Ed25519 Private Key
@@ -81,6 +90,11 @@ def sign_message(ed25519_private_key, message):
 def verify_signature(ed25519_public_key, message, signature):
     """
     Verify a signature using the Ed25519 public key.
+
+    Args:
+        ed25519_public_key: The Ed25519 public key object.
+        message: The original message that was signed.
+        signature: The signature to verify.
     """
 
     # Verify the Signature Using the Ed25519 Public Key
@@ -94,7 +108,12 @@ def verify_signature(ed25519_public_key, message, signature):
         return False
 
 def derive_x25519_keypair(ed25519_private_key):
-    
+    """
+    Derive an X25519 keypair from an Ed25519 private key.
+
+    Args:
+        ed25519_private_key: The Ed25519 private key object.
+    """
     # Convert Ed25519 Key to X25519 Key (for Diffie-Hellman Key Exchange)
     # XEdDSA allows deriving an X25519 key from an Ed25519 key.
     x25519_private_key = x25519.X25519PrivateKey.from_private_bytes(
@@ -109,6 +128,14 @@ def derive_x25519_keypair(ed25519_private_key):
     return x25519_private_key, x25519_public_key
 
 def save_ed25519_keys(name, ed25519_private_key, ed25519_public_key):
+    """
+    Save the Ed25519 private and public keys to files.
+
+    Args:
+        name: The base name for the key files (without extension).
+        ed25519_private_key: The Ed25519 private key object.
+        ed25519_public_key: The Ed25519 public key object.
+    """
 
     # Save the Ed25519 Private Key
     with open(f"{name}.key", "wb") as f:
@@ -128,6 +155,12 @@ def save_ed25519_keys(name, ed25519_private_key, ed25519_public_key):
     return f"{name}.key", f"{name}.pub"
 
 def load_ed25519_keys(name):
+    """
+    Load the Ed25519 private and public keys from files.
+
+    Args:
+        name: The base name of the key files (without extension).
+    """
     # Load the Ed25519 Private Key
     with open(f"{name}.key", "rb") as f:
         ed25519_private_key = serialization.load_pem_private_key(
@@ -141,6 +174,14 @@ def load_ed25519_keys(name):
     return ed25519_private_key, ed25519_public_key
 
 def save_x25519_keys(name, x25519_private_key, x25519_public_key):
+    """
+    Save the X25519 private and public keys to files.
+
+    Args:
+        name: The base name for the key files (without extension).
+        x25519_private_key: The X25519 private key to save.
+        x25519_public_key: The X25519 public key to save.
+    """
 
     # Save the X25519 Public Key (for Diffie-Hellman Key Exchange)
     with open(f"{name}.pub", "wb") as f:
@@ -203,8 +244,8 @@ def verify_x509_certificate(certificate, ca_certificate):
     Verify a given certificate using the CA certificate.
 
     Args:
-        certificate: The certificate to verify.
-        ca_certificate: The CA certificate used for verification.
+        certificate: The X.509 certificate to verify.
+        ca_certificate: The X.509 certificate of the Certificate Authority (CA).
     """
     
     # Use the CA's public key to verify the certificate's signature
@@ -255,6 +296,13 @@ def generate_self_signed_x509_certificate(config, private_key, public_key):
     return certificate
 
 def save_x509_certificate(name, certificate):
+    """
+    Save the X.509 certificate to a file.
+
+    Args:
+        name: The base name for the certificate file (without extension).
+        certificate: The X.509 certificate to save.
+    """
     # Save the Self-Signed Certificate
     with open(f"{name}.crt", "wb") as f:
         f.write(certificate.public_bytes(serialization.Encoding.PEM))
@@ -262,11 +310,17 @@ def save_x509_certificate(name, certificate):
     return f"{name}.crt"
 
 def bytesToX509Certificate(bytes):
+    """
+    Convert bytes to an X.509 certificate.
+    """
     return x509.load_pem_x509_certificate(bytes)
 
 def der_to_pem(der_bytes):
     """
     Convert DER bytes to properly line-wrapped PEM format (64-char lines).
+
+    Args:
+        der_bytes: The DER-encoded bytes of the certificate.
     """
     b64_encoded = base64.b64encode(der_bytes).decode('ascii')
     # Insert newlines every 64 characters
@@ -277,12 +331,18 @@ def der_to_pem(der_bytes):
 def pem_to_bytes(pem_string):
     """
     Converts a PEM format string to bytes by removing the header, footer, and newlines.
+
+    Args:
+        pem_string: The PEM formatted string.
     """
     pem_lines = pem_string.strip().splitlines()
     pem_body = [line for line in pem_lines if not line.startswith("-----")]
     return base64.b64decode("".join(pem_body))
 
 def load_x509_certificate(path):
+    """
+    Load an X.509 certificate from a file.
+    """
     # Load the Self-Signed Certificate
     with open(path, "rb") as f:
         certificate = x509.load_pem_x509_certificate(f.read())
@@ -333,6 +393,13 @@ def generate_ca(config):
 def save_ca(path, orgname, ca_private_key, ca_public_key, ca_certificate):
     """
     Saves the CA's private key, public key, and certificate to files in `.key`, `.pub`, and `.crt` formats.
+
+    Args:
+        path: The directory where the keys and certificate will be saved.
+        orgname: The organization name used for naming the files.
+        ca_private_key: The CA's private key (Ed25519).
+        ca_public_key: The CA's public key (Ed25519).
+        ca_certificate: The CA's self-signed certificate (X.509).
     """
 
     if path[-1] != '/':
@@ -362,6 +429,13 @@ def save_ca(path, orgname, ca_private_key, ca_public_key, ca_certificate):
         cert_file.write(ca_certificate.public_bytes(serialization.Encoding.PEM))
 
 def load_ca(path, orgname):
+    """
+    Loads the CA's private key, public key, and certificate from files.
+
+    Args:
+        path: The directory where the keys and certificate are stored.
+        orgname: The organization name used for naming the files.
+    """
     path = cure(path)
     private_key, public_key = load_ed25519_keys(path+f"{orgname}")
     cert = load_x509_certificate(path+f"{orgname}.crt")
@@ -407,8 +481,15 @@ def encrypt_token(token_dict, sdhkey) -> bytes:
     # Return Base64-encoded encrypted data
     return encrypted_data
 
-def decrypt_token(encrypted_token, sdhkey) -> dict:
 
+def decrypt_token(encrypted_token, sdhkey) -> dict:
+    """
+    Decrypts an encrypted token using AES-GCM with a Diffie-Hellman shared key.
+
+    Args:
+        encrypted_token: The Base64-encoded encrypted token.
+        sdhkey: The shared DH key (must be 32 bytes for AES-256).
+    """
     # Decode the encrypted token
     encrypted_data = base64.b64decode(encrypted_token.encode('utf-8'))
 
@@ -417,10 +498,11 @@ def decrypt_token(encrypted_token, sdhkey) -> dict:
     ciphertext = encrypted_data[12:-16]
     tag = encrypted_data[-16:]
 
+    # TODO: Validation checks for lengths (match expected length, might not be noticed when slicing)
+
     # Decrypt the token
     cipher = Cipher(algorithms.AES(sdhkey), modes.GCM(nonce, tag))
     decryptor = cipher.decryptor()
     token = decryptor.update(ciphertext) + decryptor.finalize()
 
     return json.loads(token.decode('utf-8'))
-

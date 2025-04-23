@@ -170,8 +170,8 @@ class Agent:
         This is a 'smarter' way to get the provider's certificate. This function uses the requests library
         to get the certificate of the server.
         """
-        provider_url = saga.config.PROVIDER_URL
-        response = requests.get(provider_url+"/certificate", verify=saga.config.CA_CERT_PATH, cert=(
+        PROVIDER_ENDPOINT = saga.config.PROVIDER_CONFIG.get('endpoint')
+        response = requests.get(PROVIDER_ENDPOINT+"/certificate", verify=saga.config.CA_CERT_PATH, cert=(
             self.workdir+"agent.crt", self.workdir+"agent.key"
         ))
         cert_bytes = base64.b64decode(response.json().get('certificate'))
@@ -180,7 +180,7 @@ class Agent:
         return cert
 
     def lookup(self, t_aid):
-        response = requests.post(f"{saga.config.PROVIDER_URL}/lookup", json={'t_aid': t_aid}, verify=saga.config.CA_CERT_PATH, cert=(
+        response = requests.post(f"{saga.config.PROVIDER_CONFIG.get('endpoint')}/lookup", json={'t_aid': t_aid}, verify=saga.config.CA_CERT_PATH, cert=(
             self.workdir+"agent.crt", self.workdir+"agent.key"
         )) 
         if response.status_code == 200:
@@ -194,7 +194,7 @@ class Agent:
             return None        
         
     def access(self, t_aid):
-        response = requests.post(f"{saga.config.PROVIDER_URL}/access", json={'i_aid':self.aid, 't_aid': t_aid}, verify=saga.config.CA_CERT_PATH, cert=(
+        response = requests.post(f"{saga.config.PROVIDER_CONFIG.get('endpoint')}/access", json={'i_aid':self.aid, 't_aid': t_aid}, verify=saga.config.CA_CERT_PATH, cert=(
             self.workdir+"agent.crt", self.workdir+"agent.key"
         )) 
         if response.status_code == 200:
@@ -904,7 +904,8 @@ class Agent:
                             enc_token_bytes = self.generate_token(i_pac, SDHK)
                             enc_token_str = base64.b64encode(enc_token_bytes).decode('utf-8')
 
-                            self.export_token(saga.config.AGENT_MOM_WORKDIR+"/notmy.token", enc_token_str)
+                            agent_mom_workdir = os.path.join(saga.config.ROOT_DIR, "/user/mom@mail.com:dummy_agent")
+                            self.export_token(os.path.join(agent_mom_workdir, "notmy.token"), enc_token_str)
                             # Store the token:
                             with self.active_tokens_lock:
                                 self.active_tokens[enc_token_str] = sc.decrypt_token(enc_token_str, SDHK)
@@ -999,9 +1000,11 @@ if __name__ == "__main__":
     import saga.config
     import json
 
-    agent_manifest_path = saga.config.AGENT_GEORGE_WORKDIR + "/agent.json"
+    agent_george_workdir = os.path.join(saga.config.ROOT_DIR, "/user/george@mail.com:dummy_agent")
+
+    agent_manifest_path = agent_george_workdir + "/agent.json"
     agent_manifest = None
     with open(agent_manifest_path, 'r') as file:
         agent_manifest = json.load(file)
-    dummy_agent = Agent(saga.config.AGENT_GEORGE_WORKDIR, agent_manifest)
+    dummy_agent = Agent(agent_george_workdir, agent_manifest)
     dummy_agent.listen()
