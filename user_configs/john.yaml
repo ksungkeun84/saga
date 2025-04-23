@@ -1,55 +1,10 @@
 name: John Doe
-phone_number: "+44 20 7946 0958"
 email: john@mail.com
 passwd: "john"
-date_of_birth: "2003-11-12"
-current_address: "14 Kensington Gardens, London, W8 4PT, UK"
-ssn: "123-45-6789"
-age: 28
-passport:
-  nationality: British
-  passport_number: "123456789"
-  country_of_issue: United Kingdom
-  issue_date: "2017-05-15"
-  expiry_date: "2027-05-14"
-medical_information:
-  insurance_number: "RY568392"
-  insurance_provider: "MedHealth International"
-hobbies:
-  - "Rock climbing"
-  - "Scuba diving"
-  - "Traveling"
-dietary_preferences: Gluten intolerant
-religion: Agnostic
-lifestyle: Active, Health-conscious, Mid-range budget traveler
-travel_history:
-  - "Europe (France, Germany, Italy)"
-  - "Southeast Asia (Thailand, Vietnam, Indonesia)"
-family_members:
-  - "Mother (Jane Johnson)"
-  - "Father (Peter Johnson)"
-previous_education:
-  - "BA in Marketing, University of Manchester"
-previous_employment:
-  - "Marketing Assistant at GreenTech Solutions"
-  - "Marketing Coordinator at Urban Adventures"
-political_views: Progressive
-media_preferences:
-  - "The Guardian"
-  - "BBC News"
-  - "National Geographic"
-  - "Travel Blogs"
 
 agents:
   - name: "dummy_agent"
-    model_type: null
-    api_base: null
     description: "A dummy agent for protocol testing."
-    model: null
-    additional_authorized_imports: []
-    tools:
-      - email
-      - calendar
     endpoint:
       ip: 127.0.0.1
       port: 7000
@@ -61,3 +16,11 @@ agents:
       }
     ]
     num_one_time_keys: 5
+    local_agent_config:
+      model_type: null
+      api_base: null
+      model: null
+      additional_authorized_imports: []
+      tools:
+        - email
+        - calendar
