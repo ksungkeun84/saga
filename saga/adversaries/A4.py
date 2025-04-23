@@ -1,4 +1,6 @@
-import fnmatch
+"""
+    Agent class for the SAGA system.
+"""
 import threading
 import time
 import json
@@ -14,19 +16,24 @@ import saga.config
 from pathlib import Path
 import random
 from saga.common.logger import Logger as logger
+from saga.common.overhead import Monitor
+from saga.common.contact_policy import check_rulebook, match
 from saga.ca.CA import get_SAGA_CA
 
 DEBUG = False
-MAX_BUFFER_SIZE = 4096
-MAX_QUERIES = 50
-""""
+MAX_QUERIES = 100
+# TODO: Handle max_queries
 
-Agent class for the SAGA system.
-
-"""
 import saga.common.crypto as sc
 
+
 def get_agent_material(dir_path: Path):
+    """
+    Reads the agent material from the agent.json file in the given directory.
+
+    Args:
+        dir_path (Path): The directory path where the agent.json file is located.
+    """
     # Check if dir exists:
     if not os.path.exists(dir_path):
         os.mkdir(dir_path)
@@ -80,12 +87,19 @@ class DummyAgent:
 
 class A4:
     # =======================================================================
-    # ADVERSARIAL AGENT 4: An adversarial agent contacts the victim agent with 
-    # the TLS public keys, but replayed access control token. In this case, 
-    # the victim agent should realize that the token has already been used 
-    # and not allow the interaction after establishing the TLS connection.
+    # ADVERSARIAL AGENT 4: M attempts to impersonate benign agent A by 
+    # providing its Provider-issued signature and public information 
+    # upon contact with other agents. TODO.
     # =======================================================================
     def __init__(self, workdir, material, local_agent = None):
+        """
+        Initializes the Agent object with the given work directory and material.
+
+        Args:
+            workdir: The working directory for the agent.
+            material: The material for the agent, which contains the agent's credentials and other information.
+            local_agent: An optional local agent object that will be used to run tasks. If not provided, a DummyAgent will be used.
+        """
 
         self.workdir = workdir
         if self.workdir[-1] != '/':
@@ -148,7 +162,7 @@ class A4:
 
         # Agent Contact Policy Rulebook:
         self.contact_rulebook = material.get("contact_rulebook", [])
-        if not self.check_rulebook(self.contact_rulebook):
+        if not check_rulebook(self.contact_rulebook):
             logger.error("Contact rulebook is not valid. Exiting...")
             raise Exception("Contact rulebook is not valid. Exiting...")
 
@@ -170,6 +184,83 @@ class A4:
         # Verify the provider certificate:
         self.CA.verify(provider_cert) # if the verification fails an exception will be raised.
         self.PK_Prov = provider_cert.public_key()
+
+        # Get the stamp issued by the provider (allegedly):
+        agent_sig_bytes = material.get("agent_sig")
+        self.stamp = material.get("stamp")
+        self.card = {
+            "aid": self.aid,
+            "device": self.device,
+            "IP": self.IP,
+            "port": self.port,
+            "agent_cert": base64.b64decode(material.get("agent_cert")),
+            "pac":  base64.b64decode(material.get("pac")),
+            "agent_sig": base64.b64decode(agent_sig_bytes),
+        }
+        # Verify the stamp:
+        try:
+            self.PK_Prov.verify(
+                base64.b64decode(self.stamp),
+                str(self.card).encode("utf-8")
+            )
+        except:
+            logger.error("ERROR: PROVIDER STAMP VERIFICATION FAILED. UNSAFE CONNECTION.")
+            raise Exception("ERROR: PROVIDER STAMP VERIFICATION FAILED. UNSAFE CONNECTION.")
+        
+        # Serialize the card:
+        self.card['agent_cert'] = base64.b64encode(
+            self.card['agent_cert']
+        ).decode("utf-8")
+        self.card['pac'] = base64.b64encode(
+            self.card['pac']
+        ).decode("utf-8")
+        self.card['agent_sig'] = base64.b64encode(
+            self.card['agent_sig']
+        ).decode("utf-8")
+
+        self.crt_u = sc.bytesToX509Certificate(
+            base64.b64decode(material.get("crt_u"))
+        )
+        # Verify usr certificate:
+        self.CA.verify(self.crt_u)
+
+        self.monitor = Monitor()
+        self.llm_monitor = Monitor(time.time)
+
+    def serialize(self, obj):
+        """
+        Serializes the object to a JSON string.
+
+        Args:
+            obj: The object to serialize. It can be a bytes, list, dict, or any other type.
+        """
+        if isinstance(obj, bytes):
+            return base64.b64encode(obj).decode('utf-8')
+        elif isinstance(obj, list):
+            return [self.serialize(item) for item in obj]
+        elif isinstance(obj, dict):
+            return {key: self.serialize(value) for key, value in obj.items()}
+        else:
+            return obj
+
+    def deserialize(self, obj):
+        """
+        Deserializes the object from a JSON string.
+
+        Args:
+            obj: The object to deserialize. It can be a base64 encoded string, list, dict, or any other type.
+        """
+        if isinstance(obj, str):
+            try:
+                return base64.b64decode(obj)
+            except:
+                return obj
+        elif isinstance(obj, list):
+            return [self.deserialize(item) for item in obj]
+        elif isinstance(obj, dict):
+            return {key: self.deserialize(value) for key, value in obj.items()}
+        else:
+            return obj
 
     def get_provider_cert(self):
         """
@@ -216,17 +307,31 @@ class A4:
     def generate_token(self, recipient_pac, sdhk) -> bytes:
         """
         Encode a token based on the shared diffie-hellman key.
+        The token contains the following information:
+        - Nonce: A random nonce for the token.
+        - Issue Timestamp: The timestamp when the token was issued.
+        - Expiration Timestamp: The timestamp when the token expires (1 hour from issue).
+        - Communication Quota: The maximum number of communications allowed with this token.
+        - Recipient PAC: The public access control key of the recipient agent.
+
+        Args:
+            recipient_pac: The public access control key of the recipient agent.
+            sdhk: The shared Diffie-Hellman key used to encrypt the token.
+
         """
 
         # Generate a random nonce
+        # TODO: Allow control of nonce length at some point
         nonce = os.urandom(12)
 
         # Issue and expiration timestamps
+        # TODO: Make sure we use UTC throughout the entire implementation
         issue_timestamp = datetime.now(tz=timezone.utc)
+        # TODO: Allow control over the expiration-time over user's config
         expiration_timestamp = issue_timestamp + timedelta(hours=1)
 
         # Communication quota
-        communication_quota = 5  # Example quota
+        communication_quota = saga.config.Q_MAX  # Example quota
 
         # Token dictionary
         token_dict = {
@@ -248,6 +353,10 @@ class A4:
         - If it was not generated by self, it is invalid.
         - If it is expired, it is invalid.
         - If the communication quota is reached, it is invalid.
+
+        Args:
+            token (str): The token to check.
+            recipient_pac: The public access control key of the recipient agent.
         """
         with self.active_tokens_lock:
             if token not in self.active_tokens.keys():
@@ -289,6 +398,9 @@ class A4:
         Makes sure that the token that was received from the receiving agent is valid.
         - If it is expired, it is invalid.
         - If the communication quota is reached, it is invalid.
+
+        Args:
+            token (str): The token to check.
         """
         with self.received_tokens_lock:
             if token not in self.received_tokens.keys():
@@ -316,6 +428,11 @@ class A4:
     def store_received_token(self, r_aid, token_str, token_dict):
         """
         Stores the token that was received from the receiving agent.
+
+        Args:
+            r_aid: The AID of the receiving agent.
+            token_str: The string representation of the token.
+            token_dict: The dictionary representation of the token.
         """
         with self.received_tokens_lock:
             self.received_tokens[token_str] = token_dict
@@ -324,6 +441,8 @@ class A4:
     def retrieve_valid_token(self, r_aid):
         """
         Retrieves a valid token for the receiving agent.
+        This function checks if the token is valid and if it is, returns it.
+        If the token is not valid, it removes it from the received tokens and the aid_to_token dict.
         """
         with self.received_tokens_lock: # THIS CREATES A DEADLOCK
             token = self.aid_to_token.get(r_aid, None)
@@ -331,17 +450,56 @@ class A4:
             return None
         if not self.received_token_is_valid(token):
             with self.received_tokens_lock:
-                # # remove the token from the received tokens:
-                # del self.received_tokens[token]
-                # # remove the token from the aid_to_token dict:
-                # del self.aid_to_token[r_aid]
-                logger.log("ADVERSARY", "Invalid token is going to be re-used.")
+                # remove the token from the received tokens:
+                del self.received_tokens[token]
+                # remove the token from the aid_to_token dict:
+                del self.aid_to_token[r_aid]
             return None
         return token
 
+    def send(self, conn, payload):
+        """
+        Sends a JSON payload over the given connection.
+
+        Args:
+            conn: The connection to send the data over.
+            payload: The JSON payload to send. It should be a dictionary.
+        """
+        data = json.dumps(payload).encode('utf-8')
+        conn.sendall(len(data).to_bytes(4, 'big') + data)
+
+    def recv(self, conn):
+        """
+        Receives a JSON payload from the given connection.
+
+        Args:
+            conn: The connection to receive the data from.
+        """
+        try:
+            length_bytes = conn.recv(4)
+            length = int.from_bytes(length_bytes, 'big')
+
+            buffer = b''
+            while len(buffer) < length:
+                buffer += conn.recv(length - len(buffer))
+
+            response = json.loads(buffer.decode('utf-8'))
+            return response
+        except Exception as e:
+            logger.error(f"Error receiving data: {e}")
+            return None
+
     def initiate_conversation(self, conn, token: str, r_aid: str, init_msg: str) -> bool:
         """
+        This function initiates a conversation with the receiving agent.
+        It sends the initial message to the receiving agent and waits for a response.
         Returns true if the conversation ended from the initiating side.
+
+        Args:
+            conn: The connection to the receiving agent.
+            token (str): The token that was received from the receiving agent.
+            r_aid (str): The AID of the receiving agent.
+            init_msg (str): The initial message to send to the receiving agent.
         """
         agent_instance = None
 
@@ -356,10 +514,13 @@ class A4:
             # Check if the received token that you are using is valid:
             if not self.received_token_is_valid(msg["token"]):
                 logger.error("Token is invalid. Ending conversation...")
+                self.monitor.stop("agent:communication_conv_init")
                 return True
 
             # Send message:
-            conn.sendall(json.dumps(msg).encode('utf-8'))
+            self.monitor.stop("agent:communication_conv_init")
+            self.send(conn, msg)
+            self.monitor.start("agent:communication_conv_init")
             logger.log("AGENT", f"Sent: \'{msg['msg']}\'")
 
             # Reduce the remaining quota for the token:
@@ -371,19 +532,21 @@ class A4:
                 logger.log("AGENT", "Task deemed complete from initiating side.")
                 # Invalidate the token:
                 with self.received_tokens_lock:
-                    # # remove the token from the received tokens:
-                    # del self.received_tokens[token]
-                    # # remove the token from the aid_to_token dict:
-                    # del self.aid_to_token[r_aid]
-                    logger.log("ADVERSARY", "Token is going to be reused.")
-
+                    # remove the token from the received tokens:
+                    del self.received_tokens[token]
+                    # remove the token from the aid_to_token dict:
+                    del self.aid_to_token[r_aid]
+                    logger.log("ACCESS", "Token invalidated from the initiating side.")
+                self.monitor.stop("agent:communication_conv_init")
                 return True
             # Receive response:
-            response = conn.recv(MAX_BUFFER_SIZE)
+            self.monitor.stop("agent:communication_conv_init")
+            response = self.recv(conn)
+            self.monitor.start("agent:communication_conv_init")
             if not response:
-                logger.warn("Received b'' indicating that the connection might have been closed from the other side. Returning...")
+                logger.warn("Failed to parse incoming socket message; connection may have closed abruptly during reception.")
+                self.monitor.stop("agent:communication_conv_init")
                 return False
-            response = json.loads(response.decode('utf-8'))
 
             # Process response:
             received_message = str(response.get("msg", self.local_agent.task_finished_token))
@@ -392,37 +555,50 @@ class A4:
                 logger.log("AGENT", "Task deemed complete from receiving side.")
                 # Invalidate the token:
                 with self.received_tokens_lock:
-                    # # remove the token from the received tokens:
-                    # del self.received_tokens[token]
-                    # # remove the token from the aid_to_token dict:
-                    # del self.aid_to_token[r_aid]
+                    # remove the token from the received tokens:
+                    del self.received_tokens[token]
+                    # remove the token from the aid_to_token dict:
+                    del self.aid_to_token[r_aid]
                     logger.log("ACCESS", "Token invalidated from the receiving side.")
-                    logger.log("ADVERSARY", "Token is going to be reused.")
+                self.monitor.stop("agent:communication_conv_init")
                 return False
             
             # Process message:
             if i > MAX_QUERIES:
                 logger.warn("Maximum allowed number of queries in the conversation is reached. Ending conversation...")
+                self.monitor.stop("agent:communication_conv_init")
                 return True
+            self.monitor.stop("agent:communication_conv_init")
+            self.llm_monitor.start("agent:llm_backend_init")
             agent_instance, text = self.local_agent.run(received_message, initiating_agent=True, agent_instance=agent_instance)
+            self.llm_monitor.stop("agent:llm_backend_init")
+            self.monitor.start("agent:communication_conv_init")
             i += 1 # increment queries counter
 
     def receive_conversation(self, conn, token: str, recipient_pac) -> bool:
         """
+        This function receives a conversation from the initiating agent.
+        It waits for a message from the initiating agent and processes it.
         Returns true if the conversation ended from the receiving side.
+
+        Args:
+            conn: The connection to the initiating agent.
+            token: The token that was received from the initiating agent.
+            recipient_pac: The public access control key of the recipient agent.
         """
         agent_instance = None
         i = 0
         while True: 
             
             # Receive message from the initiating side:
-            message = conn.recv(MAX_BUFFER_SIZE)
-            if not message:
-                logger.warn("Received b'' indicating that the connection might have been closed from the other side. Returning...")
+            self.monitor.stop("agent:communication_conv_recv")
+            message_dict = self.recv(conn)
+            self.monitor.start("agent:communication_conv_recv")
+            if not message_dict:
+                logger.warn("Failed to parse incoming socket message; connection may have closed abruptly during reception.")
+                self.monitor.stop("agent:communication_conv_recv")
                 return False
             
-            # If the message is not empty, process it:
-            message_dict = json.loads(message.decode('utf-8'))
 
             # Extract token from the message:
             token = message_dict.get("token", None)
@@ -430,6 +606,7 @@ class A4:
             # Check if the token of the message is valid
             if not self.token_is_valid(token, recipient_pac):
                 logger.error("Token is invalid. Ending conversation...")
+                self.monitor.stop("agent:communication_conv_recv")
                 return True
             
             # Reduce the remaining quota for the token:
@@ -448,15 +625,21 @@ class A4:
                     # remove the token from the active tokens:
                     del self.active_tokens[token]
                     logger.log("ACCESS", "Token invalidated from the initiating side.")
+                self.monitor.stop("agent:communication_conv_recv")
                 return False
 
             # Check if too many queries have been sent to your llm resources:
             if i > MAX_QUERIES:
                 logger.warn("Maximum allowed number of queries in the conversation is reached. Ending conversation...")
+                self.monitor.stop("agent:communication_conv_recv")
                 return True
 
             # Get agent response:
+            self.monitor.stop("agent:communication_conv_recv")
+            self.llm_monitor.start("agent:llm_backend_recv")
             agent_instance, response = self.local_agent.run(query=received_message, initiating_agent=False, agent_instance=agent_instance)
+            self.llm_monitor.stop("agent:llm_backend_recv")
+            self.monitor.start("agent:communication_conv_recv")
             i+=1 # increase query counter
             
             # Prepare response:
@@ -465,7 +648,9 @@ class A4:
                 "token": token
             }
             # Send response:
-            conn.sendall(json.dumps(response_dict).encode('utf-8'))
+            self.monitor.stop("agent:communication_conv_recv")
+            self.send(conn, response_dict)
+            self.monitor.start("agent:communication_conv_recv")
             logger.log("AGENT", f"Sent: \'{response_dict['msg']}\'")
 
             if response_dict['msg'] == self.task_finished_token:
@@ -475,9 +660,25 @@ class A4:
                     # remove the token from the active tokens:
                     del self.active_tokens[token]
                     logger.log("ACCESS", "Token invalidated from the receiving side.")
+                self.monitor.stop("agent:communication_conv_recv")
                 return True
 
     def connect(self, r_aid, message: str):
+        """
+        Connects to the receiving agent and initiates a conversation with it.
+        This function performs the following steps:
+        1. Initializes the communication protocol with the receiving agent.
+        2. Verifies the receiving agent's identity and device information.
+        3. Creates a secure connection to the receiving agent.
+        4. Initiates a conversation with the receiving agent.
+
+        Args:
+            r_aid: The AID of the receiving agent.
+            message: The initial message to send to the receiving agent.
+        """
+
+        # Start measuring algo overhead:
+        self.monitor.start("agent:communication_proto_init")
 
         # Get everything you need to reach the receiving agent from the provider:
 
@@ -492,7 +693,9 @@ class A4:
             # Fetch agent information from the provider:
             logger.log("ACCESS", f"No valid token found for {r_aid}.")
             logger.log("ACCESS", f"Requesting access to {r_aid} via the Provider.")
+            self.monitor.stop("agent:communication_proto_init")
             r_agent_material = self.access(r_aid)
+            self.monitor.start("agent:communication_proto_init")
 
         if r_agent_material is None:
             logger.log("ACCESS", f"Access to {r_aid} denied.")
@@ -578,6 +781,9 @@ class A4:
         # Save/Update agent material in memory now that it is verified:
         self.previously_contacted_agents[r_aid] = r_agent_material
 
+        # Stop measuring algo overhead:
+        self.monitor.stop("agent:communication_proto_init")
+
         # Create SSL context for the client
         context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
         context.options |= ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1 | ssl.OP_NO_TLSv1_2  # TLS 1.3 only
@@ -590,12 +796,22 @@ class A4:
         try:
             # Create and connect the socket
             with socket.create_connection((r_ip, r_port)) as sock:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 with context.wrap_socket(sock, server_hostname=r_aid) as conn:
                     logger.log("NETWORK", f"Connected to {r_ip}:{r_port} with verified certificate.")
 
+                    # Start measuring algo overhead:
+                    self.monitor.start("agent:communication_proto_init")
+
                     # Prepare the request:
                     request_dict = {}
-                    request_dict['aid'] = self.aid # The initiating agent's ID
+                    # Attach the agent's information card and the stamp from the Provider.
+                    request_dict['crt_u'] = base64.b64encode(
+                        self.crt_u.public_bytes(sc.serialization.Encoding.PEM)
+                    ).decode("utf-8")
+                    
+                    request_dict['card'] = self.card                    
+                    request_dict['stamp'] = self.stamp
 
                     # If there is no active token for contacting r_aid:
                     if token is None:
@@ -622,18 +838,22 @@ class A4:
                         # If a token is found, the initiating agent can send 
                         # it to the receiving agent.                        
                         request_dict['token'] = token
-                        
-                    # Encode the request as JSON
-                    request_json = json.dumps(request_dict).encode('utf-8')
+                    # Stop the stopwatch
+                    self.monitor.stop("agent:communication_proto_init")
+
                     # Send JSON request
-                    conn.sendall(request_json)
+                    self.send(conn, request_dict)
 
                     # Receive response
-                    response = conn.recv(MAX_BUFFER_SIZE)
-                    if token is None and response:
+                    response_dict = self.recv(conn)
+
+                    # Restart the stopwatch:
+                    self.monitor.start("agent:communication_proto_init")
+                    
+                    if token is None and response_dict:
                         # If no valid token was found, the expected response is a token.
-                        response_dict = json.loads(response.decode('utf-8'))
                         
+                        self.monitor.start("agent:token_init")
                         # Diffie hellman calculations:
                         r_otk = sc.bytesToPublicX25519Key(r_otk)
                         DH = self.sac.exchange(r_otk)
@@ -661,16 +881,27 @@ class A4:
                         token_dict = sc.decrypt_token(new_enc_token_str, SDHK)
                         # Store the token:
                         self.store_received_token(r_aid, new_enc_token_str, token_dict)
-                        
+                        self.monitor.stop("agent:token_init")
+                        logger.log("OVERHEAD", f"agent:token_init: {self.monitor.elapsed('agent:token_init')}")
+                        # Stop the stopwatch:
+                        self.monitor.stop("agent:communication_proto_init")
+                        logger.log("OVERHEAD", f"agent:communication_proto_init: {self.monitor.elapsed('agent:communication_proto_init')}")
+
                         # Start the conversation:
-                        self.initiate_conversation(conn, new_enc_token_str, r_aid, message)         
+                        self.initiate_conversation(conn, new_enc_token_str, r_aid, message)
+                        logger.log("OVERHEAD", f"agent:communication_conv_init: {self.monitor.elapsed('agent:communication_conv_init')}")
+                        logger.log("OVERHEAD", f"agent:llm_backend_init: {self.llm_monitor.elapsed('agent:llm_backend_init')}")
                     else:
                         logger.log("ACCESS", f"Valid token found. Will start conversation.")
                         # If a valid token was found, the expected response is a message.
-                        if response:
-                            response_dict = json.loads(response.decode('utf-8'))
+                        if response_dict:
                             if response_dict["token"] is not None:
+                                # Stop the stopwatch:
+                                self.monitor.stop("agent:communication_proto_init")
+                                logger.log("OVERHEAD", f"agent:communication_proto_init: {self.monitor.elapsed('agent:communication_proto_init')}")
                                 self.initiate_conversation(conn, token, r_aid, message)
+                                logger.log("OVERHEAD", f"agent:communication_conv_init: {self.monitor.elapsed('agent:communication_conv_init')}")
+                                logger.log("OVERHEAD", f"agent:llm_backend_init: {self.llm_monitor.elapsed('agent:llm_backend_init')}")
                             else:
                                 logger.error("Token rejected from receiving side.")
                                 
@@ -690,104 +921,69 @@ class A4:
             except:
                 logger.log("NETWORK", "Connection already closed by other party.")
 
-    def check_rulebook(self, rulebook):
-        """
-        Checks if the contact rulebook is valid.
-        """
-        if rulebook is None:
-            return False
-        for rule in rulebook:
-            # Rules are in the form of:
-            # alice@her_email.com:bobafet
-            components = rule.split(":")
-            if len(components) == 1:
-                if components[0] != "*":
-                    logger.error(f"Invalid AC rule {rule} format. Expected format: <aid> = <uid>:<name>")
-                    return False
-                continue
-            if len(components) != 2:
-                logger.error(f"Invalid AC rule {rule} format. Expected format: <aid> = <uid>:<name>")
-                return False
-            uid, name = components[0], components[1]
-            if not isinstance(uid, str) or not isinstance(name, str):
-                logger.error(f"Invalid AC rule {rule} format. Expected format: <aid> = <uid>:<name>. Both the uid and aid must be strings.")
-                return False
-        return True
-
-    def check_aid(self, aid):
-        """
-        Checks if the AID is in the right format.
-        """
-        # AID is in the form of:
-        # alice@her_email.com:bobafet
-        components = aid.split(":")
-        if len(components) != 2:
-            logger.error("Invalid AID format. Expected format: <aid> = <uid>:<name>")
-            return False
-        uid, name = components[0], components[1]
-        if not isinstance(uid, str) or not isinstance(name, str):
-            logger.error("Invalid AID format. Expected format: <aid> = <uid>:<name>. Both the uid and aid must be strings.")
-            return False
-        # Check if the uid and name are valid:
-        # The uid must only have 1 '@' character and NO ':' characters.
-        if uid.count('@') != 1 or uid.count(':') != 0:
-            logger.error("Invalid UID format.")
-        # Check the name format:
-        # The name must not have any ':' characters.
-        if name.count(':') != 0:
-            logger.error("Invalid NAME format.")
-            return False
-        return True
-
-    def allowed_to_contact(self, i_aid):
-        """
-        Checks if the initiating agent is allowed to contact the receiving agent.
-        If the
-        """
-
-        # Check that the i_aid is in the right format:
-        if not self.check_aid(i_aid):
-            logger.error("Invalid AID format. Expected format: <aid> = <uid>:<name>")
-            return False
-        
-        # Check if the agent is allowed to contact the receiving agent:
-        for rule in self.contact_rulebook:
-            # Use fnmatch for Unix filename pattern matching
-            if fnmatch.fnmatch(i_aid, rule):
-                # The agent is allowed to contact the receiving agent.
-                return True
-        # Otherwise, the agent is not allowed to contact the receiving agent.
-        return False
-
     def handle_i_agent_connection(self, conn, fromaddr):
         """
-        Handles an incoming TLS connection from an intiating agent.
+        Handles an incoming TLS connection from an initiating agent.
+
+        This function performs the following steps:
+        1. Receives the initial message from the initiating agent.
+        2. Verifies the initiating agent's identity and device information.
+        3. Checks access control rules to ensure the initiating agent is allowed to contact this agent.
+        4. Verifies the initiating agent's user certificate and PAC.
+        5. If all checks pass, it initiates a conversation with the initiating agent.
+
+        Args:
+            conn: The connection object for the incoming connection.
+            fromaddr: The address of the initiating agent.
         """
         try:
             logger.log("NETWORK", f"Incoming connection from {fromaddr}.")
 
             # Receive data
-            data = conn.recv(MAX_BUFFER_SIZE)
-            if data:
+            received_msg = self.recv(conn)
+            if received_msg:
+                    # Start the stopwatch:
+                    self.monitor.start("agent:communication_proto_recv")
                     try:
-                        # Decode and parse JSON data
-                        received_msg = json.loads(data.decode('utf-8'))
 
-                        # Extract i_aid:
-                        i_aid = received_msg.get("aid", None)
+                        # Extract i_aid from card:
+                        i_card = received_msg.get("card", None)
+                        #i_card = self.deserialize(i_card)
+                        i_aid = i_card.get("aid", None)
+
+                        # Check that the agent 
 
                         if i_aid is None:
                             logger.error("No agent ID found in the initial message from the initiating side.")
                             raise Exception("No agent ID provided.")
                         
-                        if not self.allowed_to_contact(i_aid):
+                        if match(self.contact_rulebook, i_aid) < 0:
                             # The initiating agent is not allowed to contact the receiving agent.
                             logger.log("ACCESS", f"Access control failed: {i_aid} is not allowed to contact this agent.")
                             raise Exception(f"Access control failed: {i_aid} is not allowed to contact this agent.")
-
-                        # Ask the provider for the details of the initiating agent:
-                        logger.log("ACCESS", f"Fetching crypto and device information for {i_aid} from the Provider.")
-                        i_agent_material = self.lookup(i_aid)
+                        
+                        # Fill in the agent certificate and agent IP from the connection:
+                        # - this handles mismatch checks too
+                        i_card['IP'] = fromaddr[0]
+                        i_card['agent_cert'] = sc.der_to_pem(conn.getpeercert(binary_form=True))
+                        # Convert to byte format for signature verification:
+                        i_card['pac'] = base64.b64decode(i_card['pac'])
+                        i_card['agent_sig'] = base64.b64decode(i_card['agent_sig'])
+                
+                        
+                        logger.log("CRYPTO", f"Verifying {i_aid}'s stamp from the Provider.")
+                        i_stamp = received_msg.get("stamp", None)
+                        try:
+                            self.PK_Prov.verify(
+                                base64.b64decode(i_stamp),
+                                str(i_card).encode("utf-8")
+                            )
+                        except:
+                            logger.error(f"ERROR: {i_aid} STAMP VERIFICATION FAILED. UNSAFE CONNECTION.")
+                            raise Exception(f"ERROR: {i_aid} STAMP VERIFICATION FAILED. UNSAFE CONNECTION.")
+                        
+                        # Check data integrity:
+                        i_agent_material = i_card
 
                         # Perform verification checks:                                
                         if i_agent_material is None:
@@ -795,7 +991,7 @@ class A4:
                             raise Exception(f"{i_aid} not found.")
                     
                         # Verify user certificate:
-                        i_agent_user_cert_bytes = i_agent_material.get("crt_u", None)
+                        i_agent_user_cert_bytes = base64.b64decode(received_msg.get("crt_u", None))
                         i_agent_user_cert = sc.bytesToX509Certificate(i_agent_user_cert_bytes)
 
                         logger.log("CRYPTO", f"Verifying {i_aid}'s user certificate.")
@@ -846,11 +1042,11 @@ class A4:
                         block = {}
                         block.update(dev_network_info)
                         block.update(crypto_info)
-                        r_agent_sig_bytes = i_agent_material.get("agent_sig")
+                        i_agent_sig_bytes = i_agent_material.get("agent_sig")
                         logger.log("CRYPTO", f"Verifying {i_aid}'s signature.")
                         try:
                             pk_u.verify(
-                                r_agent_sig_bytes,
+                                i_agent_sig_bytes,
                                 str(block).encode("utf-8")
                             )
                         except:
@@ -868,6 +1064,7 @@ class A4:
                         # Check if the initiating agent has a token:
                         i_token = received_msg.get("token", None)
                         if i_token is None:
+                            self.monitor.start("agent:token_recv")
                             # The initiating agent does not have a token. 
                             logger.log("ACCESS", f"No valid received token found. For {i_aid}. Generating new one.")
                             
@@ -904,8 +1101,7 @@ class A4:
                             
                             # Generate the token:
                             enc_token_bytes = self.generate_token(i_pac, SDHK)
-                            enc_token_str = base64.b64encode(enc_token_bytes).decode('utf-8')
-                            # TODO: change the 
+                            enc_token_str = base64.b64encode(enc_token_bytes).decode('utf-8') 
                             token_response = {"token": enc_token_str}
                             logger.log("ACCESS", f"Generated token: {enc_token_str}")
 
@@ -915,18 +1111,32 @@ class A4:
                             with self.active_tokens_lock:
                                 self.active_tokens[enc_token_str] = sc.decrypt_token(enc_token_str, SDHK)
 
-                            conn.sendall(ser_token_response)
+                            self.monitor.stop("agent:token_recv")
+                            logger.log("OVERHEAD", f"agent:token_recv: {self.monitor.elapsed('agent:token_recv')}")
+                            # Stop the stopwatch
+                            self.monitor.stop("agent:communication_proto_recv")
+                            logger.log("OVERHEAD", f"agent:communication_proto_recv: {self.monitor.elapsed('agent:communication_proto_recv')}")
+
+                            self.send(conn, token_response)
 
                             # Start the conversation:
                             logger.log("AGENT", f"Starting conversation with {i_aid}.")
                             self.receive_conversation(conn, enc_token_str, i_pac)
+                            logger.log("OVERHEAD", f"agent:communication_conv_recv: {self.monitor.elapsed('agent:communication_conv_recv')}")
+                            logger.log("OVERHEAD", f"agent:llm_backend_recv: {self.llm_monitor.elapsed('agent:llm_backend_recv')}")
                         else:
                             # Check the token and see if it is in the active tokens:
                             if self.token_is_valid(i_token, i_pac):
+                                # Stop the stopwatch
+                                self.monitor.stop("agent:communication_proto_recv")
+                                logger.log("OVERHEAD", f"agent:communication_proto_recv: {self.monitor.elapsed('agent:communication_proto_recv')}")
+
                                 # If the token is valid, start the conversation:
                                 logger.log("ACCESS", f"Valid token found. Will accept conversation.")
-                                conn.sendall(json.dumps({"token": i_token}).encode('utf-8'))
+                                self.send(conn, {"token": i_token})
                                 self.receive_conversation(conn, i_token, i_pac)
+                                logger.log("OVERHEAD", f"agent:communication_conv_recv: {self.monitor.elapsed('agent:communication_conv_recv')}")
+                                logger.log("OVERHEAD", f"agent:llm_backend_recv: {self.llm_monitor.elapsed('agent:llm_backend_recv')}")
                             else:
                                 logger.error("Token is invalid. Ending connection.")
 
