@@ -158,6 +158,32 @@ bisco = Agent.fromDir("user/bob@hisdomain.com:bisco/")
 bisco.connect("alice@herdomain.com:astro")
 ```
 
+Users may use our implementation of a local LLM agent (available under `agent_backend`), but are free to implement their local agents using any library or manner as long as it inherits from the `LocalAgent` abstract class (defined under `local_agent.py`). The basic requirement is to implement the following function:
+
+```python
+def run(self, query: str,
+            initiating_agent: bool,
+            agent_instance: 'LocalAgent' = None,
+            **kwargs) -> Tuple['LocalAgent', str]:
+        """
+        Run the local agent with the given query.
+
+        Args:
+            query (str): The query to run.
+            initiating_agent (bool): Whether this is the agent that initiated the task or not.
+            Can be helpful in using crafted prompts for the underlying model(s)
+            agent_instance (LocalAgent, optional): An instance of LocalAgent to use.
+            If provided, the agent class will not be reinitialized.
+            We recommend not reusing agent classes, as most libraries attach minimal overhead to local agent wrappers, and reusing them can increase the attack surface for prompt injection and data leakage (as well as increase context window length).
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            Tuple[LocalAgent, str]: A tuple containing the agent instance (a new one, if no agent instance was provided) and the result string.
+        """
+```
+
+
+
 ## Experiments
 
 ### Setup 

@@ -2,10 +2,10 @@ from setuptools import setup, find_packages
 
 setup(
     name="saga",
-    version="1.0.0",
+    version="1.0.1",
     author="Georgios Syros, Anshuman Suri",
     author_email="syros.g@northeastern",
-    description="A project for secure user registration and authentication.",
+    description="A project for secure and governable autonomous agent communication.",
     packages=find_packages(),
     install_requires=[
         "cryptography",

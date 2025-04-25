@@ -12,27 +12,31 @@ import base64
 import requests
 from datetime import datetime, timedelta, timezone
 import traceback
-import saga.config
 from pathlib import Path
-import random
+from cryptography.x509 import Certificate
+
+import saga.config
 from saga.common.logger import Logger as logger
 from saga.common.overhead import Monitor
 from saga.common.contact_policy import check_rulebook, match
 from saga.ca.CA import get_SAGA_CA
+import saga.common.crypto as sc
+from saga.local_agent import LocalAgent, DummyAgent
 
 DEBUG = False
+NONCE_SIZE_BYTES = 12  # Size of the nonce in bytes
 MAX_QUERIES = 100
 # TODO: Handle max_queries
 
-import saga.common.crypto as sc
 
-
-def get_agent_material(dir_path: Path):
+def get_agent_material(dir_path: Path) -> dict:
     """
     Reads the agent material from the agent.json file in the given directory.
 
     Args:
         dir_path (Path): The directory path where the agent.json file is located.
+    Returns:
+        dict: The material read from the agent.json file.
     """
     # Check if dir exists:
     if not os.path.exists(dir_path):
@@ -49,40 +53,41 @@ def get_agent_material(dir_path: Path):
     return material
 
 
-class DummyAgent:
+def serialize(obj):
     """
-    Dummy agent for networking testing purposes. Simulates a dumb agent that thinks and returns a random response.
+    Serializes the object to a JSON string.
+
+    Args:
+        obj: The object to serialize. It can be a bytes, list, dict, or any other type.
     """
-    vocab = [
-        "Hi",
-        "Hello",
-        "Yeah this makes sense.",
-        "I think I understand.",
-        "I love apples",
-        "I don't know.",
-        "I'm not sure.",
-        "I'm sorry, I don't understand.",
-        "I'm sorry, I can't do that.",
-        "Do you think that we have purpose?",
-        "What is the meaning of life?",
-        "Do you think we are alone in the universe?",
-        "I think we are alone in the universe.",
-        "I think we are not alone in the universe.",
-        'Faxxx',
-        "<TASK_FINISHED>",
-        "<TASK_FINISHED>",
-        "<TASK_FINISHED>",
-        "<TASK_FINISHED>"
-    ]
+    if isinstance(obj, bytes):
+        return base64.b64encode(obj).decode('utf-8')
+    elif isinstance(obj, list):
+        return [serialize(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {key: serialize(value) for key, value in obj.items()}
+    else:
+        return obj
 
-    def __init__(self):
-        self.task_finished_token = "<TASK_FINISHED>"
 
-    def run(self, query, initiating_agent=None, agent_instance=None):
-        time.sleep(1)
-        if query == self.task_finished_token:
-            return self.task_finished_token
-        return None, random.choice(DummyAgent.vocab)
+def deserialize(obj):
+    """
+    Deserializes the object from a JSON string.
+
+    Args:
+        obj: The object to deserialize. It can be a base64 encoded string, list, dict, or any other type.
+    """
+    if isinstance(obj, str):
+        try:
+            return base64.b64decode(obj)
+        except:
+            return obj
+    elif isinstance(obj, list):
+        return [deserialize(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {key: deserialize(value) for key, value in obj.items()}
+    else:
+        return obj
 
 
 class Agent:
@@ -91,14 +96,14 @@ class Agent:
         This class is responsible for managing the agent's lifecycle, handling communication with other agents,
         and managing the agent's access control and security features.
     """
-    def __init__(self, workdir, material, local_agent = None):
+    def __init__(self, workdir: str, material: dict, local_agent: LocalAgent = None):
         """
         Initializes the Agent object with the given work directory and material.
 
         Args:
-            workdir: The working directory for the agent.
-            material: The material for the agent, which contains the agent's credentials and other information.
-            local_agent: An optional local agent object that will be used to run tasks. If not provided, a DummyAgent will be used.
+            workdir (str): The working directory for the agent.
+            material (dict): The material for the agent, which contains the agent's credentials and other information.
+            local_agent (LocalAgent): An optional local agent object that will be used to run tasks. If not provided, a DummyAgent will be used.
         """
 
         self.workdir = workdir
@@ -110,6 +115,10 @@ class Agent:
         if local_agent is None:
             logger.warn("No local agent provided. Using dummy agent.")
             self.local_agent = DummyAgent()
+        
+        # Check if local_agent is a child of LocalAgent:
+        if not isinstance(self.local_agent, LocalAgent):
+            raise Exception("Please provide a valid LocalAgent instance or a child of it.")
 
         self.task_finished_token = self.local_agent.task_finished_token
 
@@ -227,45 +236,13 @@ class Agent:
         self.monitor = Monitor()
         self.llm_monitor = Monitor(time.time)
 
-    def serialize(self, obj):
-        """
-        Serializes the object to a JSON string.
-
-        Args:
-            obj: The object to serialize. It can be a bytes, list, dict, or any other type.
-        """
-        if isinstance(obj, bytes):
-            return base64.b64encode(obj).decode('utf-8')
-        elif isinstance(obj, list):
-            return [self.serialize(item) for item in obj]
-        elif isinstance(obj, dict):
-            return {key: self.serialize(value) for key, value in obj.items()}
-        else:
-            return obj
-
-    def deserialize(self, obj):
-        """
-        Deserializes the object from a JSON string.
-
-        Args:
-            obj: The object to deserialize. It can be a base64 encoded string, list, dict, or any other type.
-        """
-        if isinstance(obj, str):
-            try:
-                return base64.b64decode(obj)
-            except:
-                return obj
-        elif isinstance(obj, list):
-            return [self.deserialize(item) for item in obj]
-        elif isinstance(obj, dict):
-            return {key: self.deserialize(value) for key, value in obj.items()}
-        else:
-            return obj
-
-    def get_provider_cert(self):
+    def get_provider_cert(self) -> Certificate:
         """
         This is a 'smarter' way to get the provider's certificate. This function uses the requests library
         to get the certificate of the server.
+        
+        Returns:
+            cert (Certificate): The provider's certificate as a cryptography.x509.Certificate object.
         """
         provider_url = saga.config.PROVIDER_CONFIG['endpoint']
         response = requests.get(provider_url+"/certificate", verify=saga.config.CA_CERT_PATH, cert=(
@@ -276,13 +253,16 @@ class Agent:
         
         return cert
 
-    def lookup(self, t_aid: str):
+    def lookup(self, t_aid: str) -> dict:
         """
         Looks up the target agent by its AID.
         This function sends a request to the provider to look up the target agent's AID.
 
         Args:
             t_aid (str): The AID of the target agent.
+        Returns:
+            data (dict): The data returned by the provider, which contains the target agent's information.
+            If the access is denied, it returns None.
         """
         response = requests.post(f"{saga.config.PROVIDER_CONFIG['endpoint']}/lookup", json={'t_aid': t_aid}, verify=saga.config.CA_CERT_PATH, cert=(
             self.workdir+"agent.crt", self.workdir+"agent.key"
@@ -327,10 +307,9 @@ class Agent:
             sdhk: The shared Diffie-Hellman key used to encrypt the token.
 
         """
-
         # Generate a random nonce
         # TODO: Allow control of nonce length at some point
-        nonce = os.urandom(12)
+        nonce = os.urandom(NONCE_SIZE_BYTES)
 
         # Issue and expiration timestamps
         # TODO: Make sure we use UTC throughout the entire implementation
@@ -465,23 +444,27 @@ class Agent:
             return None
         return token
 
-    def send(self, conn, payload):
+    def send(self, conn, payload: dict):
         """
         Sends a JSON payload over the given connection.
 
         Args:
             conn: The connection to send the data over.
-            payload: The JSON payload to send. It should be a dictionary.
+            payload (dict): The JSON payload to send. It should be a dictionary.
         """
         data = json.dumps(payload).encode('utf-8')
         conn.sendall(len(data).to_bytes(4, 'big') + data)
 
-    def recv(self, conn):
+    def recv(self, conn) -> dict:
         """
         Receives a JSON payload from the given connection.
 
         Args:
             conn: The connection to receive the data from.
+        
+        Returns:
+            response (dict): The JSON payload received from the connection.
+            If the reception fails, it returns None.
         """
         try:
             length_bytes = conn.recv(4)

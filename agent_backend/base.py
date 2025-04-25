@@ -7,6 +7,7 @@ from smolagents.memory import TaskStep
 import os
 
 from saga.config import ROOT_DIR, UserConfig
+from saga.local_agent import LocalAgent
 
 from agent_backend.tools.email import LocalEmailClientTool
 from agent_backend.tools.calendar import LocalCalendarTool
@@ -18,7 +19,7 @@ import importlib.resources
 VERBOSITY_LEVEL = 2
 
 
-class AgentWrapper:
+class AgentWrapper(LocalAgent):
     """
         Base agents wrapper, built on top of CodeAgent form smolagents
     """
