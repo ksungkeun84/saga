@@ -239,3 +239,40 @@ python <task.py> query ../user_configs/config2.yaml ../user_configs/config1.yaml
 The agent corresponding to `config2.yaml` will then contact `config1.yaml` and they work towards their shared goal.
 
 > __Note__: Make sure you set `OPENAI_API_KEY` as an environment variable before running experiments.
+
+
+### Agents without SAGA
+
+While this package is designed to mainly support SAGA, you can use our local LLM implementation without SAGA i.e., set up LLM agents and manage their communication your way. One way to do so is to run the two agents and exposing their endpoints via a Flask Request- hardcoding each other's endpoints and communicating via these endpoints.
+
+```python
+from agent_backend.base import get_agent
+
+# Assume some user_config was loaded
+agent_of_interest_index = 0 # Whichever agent (out of all user agents) you wish to run
+agent_of_interest = config.agents[agent_of_interest_index]
+
+# Initialize the agent
+local_agent = get_agent(
+    config,
+    agent_of_interest.local_agent_config
+)
+
+# Assume query was sent by another agent
+
+# Query the agent
+code_agent_instance, response = local_agent.run(
+    query,
+    initiating_agent=False, # Set to true if your agent started the conversation
+    agent_instance=None, # Replace with self object in subsequent interactions
+)
+
+#.....
+
+# In subsequent interactions, use code_agent_instance as agent_instance to keep track
+_, response = local_agent.run(
+    query,
+    initiating_agent=False,
+    agent_instance=code_agent_instance
+)
+```
