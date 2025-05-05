@@ -55,69 +55,79 @@ Take note of the `endpoint` and update `config.yaml` for the `provider`.
 
 ## User Registration
 
-The next step is to run the user client in order to register agents with the provider:
+Central to all user operations within the SAGA ecosystem is the `user.py` script.  It supports both interactive and automated usage modes.
 
+Interactive use for manual control and input:
 ```bash
-cd saga/user/ && python user.py
+cd user/ && python user.py --interactive
 ```
 
+Automated for predefined operations using a user configuration file (e.g., for registration and agent setup)::
+```bash
+cd saga/user/ && python3 user.py --uconfig /path/to/saga/user_configs/bob.yaml --register --register-agents
+```
+
+Now for the purposes of demonstration, assume the user `Bob` wants to register a new agent under the name `customagent`, an email client agent responsible for handling Bob's inbox. 
+
+In order to register `customagent`, `Bob` first needs to be registered with the provider using the `register` endpoint:
+
+```
+======= SAGA User Client CLI =======
+1. Register
+2. Login
+3. Register Agent
+4. Exit
+Choose an option: 1
+Enter email: bob@mail.com
+Enter password: bob
+11:25:44 [USER] Generating user cryptographic material...
+11:25:44 [CRYPTO] Saving user keys to /path/to/saga/user/keys/bob@mail.com
+[...]
+```
 > __Note__: all generated cryptographic material for the user will be placed within a `keys/` subdirectory. The user's public/private keys will be stored in the `<uid>.pub` and `<uid>.key` format.
 
 ## Agent Registration
 
-Assume the user `Alice` wants to register a new agent under the name `Astro`, an email client agent responsible for handling Alice's inbox. In order to register `Astro`, `Alice` first needs to be registered with the provider using the `register` endpoint. 
-
-```bash
-1. Register
-2. Login
-3. Google OAuth Login
-4. Register Agent
-Choose an option: 1 # Register user 
-Enter email: alice@herdomain.com
-Enter password: 1234
-Generating cryptographic material...
-{'message': 'User registered successfully'}
-```
-
-After successful registration, Alice needs to authenticate herself in order to register Astro under her name. She does it with the `login` endpoint. 
+Before registering a new agent, `Bob` needs to authenticate themselves with the provider:
 
 ```bash
 ======= SAGA User Client CLI =======
 1. Register
 2. Login
-3. Google OAuth Login
-4. Register Agent
-Choose an option: 2 # Authenticate user
-Enter email: alice@herdomain.com
-Enter password: 1234
-Login successful. Token: eyJhbGciOiJIUzI1NiIsInR5cCI6...
+3. Register Agent
+4. Exit
+Choose an option: 2           
+Enter email: bob@mail.com
+Enter password: bob
+11:28:35 [PROVIDER] User bob@mail.com logged in successfully.
 ```
 
-Finally, Alice proceeds with providing all the required material (agent device and networking information, cryptographic content, etc.) for Astro to operate within the SAGA network. The agent registration is done via the `register_agent` endpoint.
+After successful authentication, `Bob` can register `customagent` with providing all the required material (agent device and networking information, cryptographic content, etc.) for `customagent` to operate within the SAGA network.
 
 ```bash
 ======= SAGA User Client CLI =======
 1. Register
 2. Login
-3. Google OAuth Login
-4. Register Agent
-Choose an option: 4 # Register a new agent
-Enter agent name: astro
-Enter device name: lambda
+3. Register Agent
+4. Exit
+Choose an option: 3
+Enter agent name: customagent
+Enter device name: alpha
 Enter IP address: 127.0.0.1
-Enter port: 6000
-Enter number of one-time prekeys: 10
-Agent 'astro' registered successfully.
+Enter port: 12345
+Enter number of one-time access keys: 10
+Enter contact rulebook: [{"pattern":"*", "budget":10}]
+11:29:05 [PROVIDER] Agent customagent registered successfully with stamp DNRD50sR3PFHqXjiG7Xuyq2d5fzALKaKtY2MS/8PoE9S//+pcNpGlOeKXOB1tnI/YRs4IL0XI/HlKV243LmcAQ==.
 ```
 
-> __Note__: Once an agent has been successfully registered with the provider, a new subdirectory within the `user` directory, e.g. `user/<aid>` or in our case `user/alice@herdomain.com:astro`. This is Astro's woring directory. This directory contains the agent's manifest: `agent.json` listing the required metadata for the new agent to be able to operate within the SAGA network:
+> __Note__: Once an agent has been successfully registered with the provider, a new subdirectory within the `user` directory, e.g. `user/<aid>` or in our case `user/bob@mail.com:customagent`. This is `customagent`'s woring directory. This directory contains the agent's manifest: `agent.json` listing the required metadata for the new agent to be able to operate within the SAGA network:
 
 ```json
 {
-    "aid": "alice@herdomain.com:astro",
-    "device": "alice_computer",
+    "aid": "bob@mail.com:customagent",
+    "device": "alpha",
     "IP": "127.0.0.1",
-    "port": "6000",
+    "port": 12345,
     "dev_info_sig": "Q78qQTDrrQRs77Kfe37IFQkU...",
     "agent_cert": "LS0tLS1CRUdJTiBDR...",
     "public_signing_key_sig": "mgVXMQo3zGLJD31700zkcdVlBmr...",
@@ -136,26 +146,50 @@ Agent 'astro' registered successfully.
 
 Once the new agent has been registered with the provider and its manifest has been created, the new SAGA agent can be run by simply creating a new saga `Agent` instance:
 
+### Requirements
+
+In order to instanciate a SAGA `Agent`, there are three things that are required:
+- The agent working directory which contains the agent manifest `agent.json`.
+- The agent metadata of the manifest (`agent.json`).
+- A `AgentWrapper` instance which encapsulates a LLM Agent implementation e.g., a `smolagents` local agent.
+
+### Kickstart Example
+
 ```python
-import saga.config
-from saga.agent import Agent
+from saga.agent import Agent, get_agent_material
+
+# Gather required material
+agent_workdir = "user/alice@mail.com:email_agent/"
+agent_material = get_agent_material(agent_workdir)
 
 # Create agent instance 
-astro = Agent.fromDir("user/alice@herdomain.com:astro/")
+alice_email_agent = Agent(
+    workdir=agent_workdir,
+    material=agent_material,
+    local_agent=<LLM_AGENT_WRAPPER>
+)
 # Goes online and can accept conversations from other agents
-astro.listen() 
+alice_email_agent.listen()
 ```
 
 Once `listen` is invoked, the new agent goes online and other agents can start opening connections:
 
 ```python
-import saga.config
-from saga.agent import Agent
+from saga.agent import Agent, get_agent_material
+
+# Gather required material
+agent_workdir = "user/bob@mail.com:email_agent/"
+agent_material = get_agent_material(agent_workdir)
 
 # Create agent instance 
-bisco = Agent.fromDir("user/bob@hisdomain.com:bisco/")
-# Attempts to start a new conversation with Alice's astro agent.
-bisco.connect("alice@herdomain.com:astro")
+bob_email_agent = Agent(
+    workdir=agent_workdir,
+    material=agent_material,
+    local_agent=<LLM_AGENT_WRAPPER>
+)
+
+# Attempts to start a new conversation with Alice's email agent.
+bob_email_agent.connect("alice@mail.com:email_agent", "<QUERY>")
 ```
 
 Users may use our implementation of a local LLM agent (available under `agent_backend`), but are free to implement their local agents using any library or manner as long as it inherits from the `LocalAgent` abstract class (defined under `local_agent.py`). The basic requirement is to implement the following function:
