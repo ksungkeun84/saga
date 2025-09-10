@@ -1,9 +1,4 @@
 {
   "image": "mcr.microsoft.com/devcontainers/universal:2",
-  "features": {
-    "ghcr.io/devcontainer/features/mongodb:1": {
-      "version": "latest"
-    }
-  },
-  "postCreateCommand": "sudo service mongod start"
-}
+  "features": {},
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y mongodb-org"
