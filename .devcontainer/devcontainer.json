@@ -1,4 +1,12 @@
 {
-  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "name": "Flask with MongoDB",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
   "features": {},
-  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y mongodb-org"
+  "forwardPorts": [5000, 27017],
+  "services": {
+    "mongodb": {
+      "image": "mongo:6.0",
+      "ports": ["27017:27017"]
+    }
+  }
+}
